@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres"
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    supabase_key: str = ""  # chave da API; só serve ao backend se for a secreta/service_role
 
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000"]
@@ -26,6 +27,8 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     enrichment_timeout_s: float = 5
     enable_dev_routes: bool = False
+    external_data_mode: Literal["auto", "sql", "rest"] = "auto"
+    external_data_cache_ttl_s: float = 30 * 24 * 3600
 
     @field_validator("cors_origins", mode="before")
     @classmethod

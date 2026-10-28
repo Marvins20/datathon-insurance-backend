@@ -163,6 +163,15 @@ Recorte versionado em `data/risco_municipio.csv` (4.213 municípios) e `data/ris
 geração em `app/enrichment/risco_municipio.py`. Município sem registro no Atlas fica sem risco
 climático (desconhecido), só com o roubo da UF. **Licença: confirmar os termos de cada fonte no site.**
 
+### Carga no banco (ETL de desastres e crimes)
+
+```bash
+uv run python -m app.etl.externo --data-dir ../xenga-datathon-context --check    # alvo e modo de acesso
+uv run python -m app.etl.externo --data-dir ../xenga-datathon-context            # carga idempotente (UPSERT)
+```
+
+Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de contexto).
+
 ## Métricas e resultados (base de desenvolvimento, 2.978 casos)
 
 | Métrica | Valor |

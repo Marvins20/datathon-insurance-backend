@@ -49,6 +49,8 @@ email-validator==2.3.0
     # via
     #   fastapi
     #   pydantic
+et-xmlfile==2.0.0
+    # via openpyxl
 fastapi==0.162.0
     # via negocio-de-pe-backend
 fastapi-cli==0.0.32
@@ -144,6 +146,8 @@ networkx==3.7
     # via negocio-de-pe-backend
 numpy==2.5.4
     # via pandas
+openpyxl==3.1.5
+    # via negocio-de-pe-backend
 opentelemetry-api==1.45.1
     # via
     #   anthropic
@@ -346,6 +350,8 @@ websockets==17.3
     #   uvicorn
 wrapt==2.5.1
     # via deprecated
+xlrd==2.0.2
+    # via negocio-de-pe-backend
 xxhash==4.0.2
     # via
     #   langgraph
