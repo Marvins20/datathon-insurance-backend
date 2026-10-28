@@ -39,3 +39,17 @@ def hypotheses(snapshot: GraphSnapshot, cnae: str) -> dict[str, float]:
         if p is not None:
             result[data["fact_key"]] = p
     return result
+
+
+def exposures(snapshot: GraphSnapshot, fact_key: str) -> list[tuple[str, float, list[str]]]:
+    """Caminhos característica →EXPOE_A→ risco →AFETA→ dimensões: [(risco, peso, dimensões)]."""
+    g = snapshot.graph
+    nodes = [n for n, d in g.nodes(data=True) if d.get("fact_key") == fact_key]
+    result = []
+    for node in nodes:
+        for _, risk, key, data in g.out_edges(node, keys=True, data=True):
+            if key != "EXPOE_A":
+                continue
+            dims = sorted(d for _, d, k in g.out_edges(risk, keys=True) if k == "AFETA")
+            result.append((risk, data["weight"], dims))
+    return sorted(result)

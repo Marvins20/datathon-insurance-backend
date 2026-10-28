@@ -1,6 +1,6 @@
 import pytest
 
-from app.graph.reasoner import cnae_ancestors, hypotheses, probability
+from app.graph.reasoner import cnae_ancestors, exposures, hypotheses, probability
 from app.graph.store import load_snapshot
 
 
@@ -25,7 +25,7 @@ def test_probability_uses_specific_level(snapshot) -> None:
 
 
 def test_probability_backs_off_to_division(snapshot) -> None:
-    assert probability(snapshot, "1091-1/02", "estoque_relevante") == pytest.approx(0.6)
+    assert probability(snapshot, "1091-1/02", "possui_estoque") == pytest.approx(0.6)
 
 
 def test_unknown_activity_has_no_hypothesis(snapshot) -> None:
@@ -35,3 +35,11 @@ def test_unknown_activity_has_no_hypothesis(snapshot) -> None:
 
 def test_hypotheses_are_deterministic(snapshot) -> None:
     assert hypotheses(snapshot, "1091-1/02") == hypotheses(load_snapshot(), "1091-1/02")
+
+
+def test_exposures_follow_risk_to_dimension(snapshot) -> None:
+    assert exposures(snapshot, "mercadoria_refrigerada") == [
+        ("dano_eletrico", 0.7, ["conteudo"]),
+        ("deterioracao_mercadoria", 0.9, ["conteudo"]),
+    ]
+    assert exposures(snapshot, "delivery") == []

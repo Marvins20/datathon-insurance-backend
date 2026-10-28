@@ -6,6 +6,8 @@ from pathlib import Path
 import networkx as nx
 import yaml
 
+from app.domain.fact_keys import get_fact_key
+
 ONTOLOGY_DIR = Path(__file__).parent / "ontology"
 
 
@@ -30,6 +32,7 @@ def load_snapshot(directory: Path = ONTOLOGY_DIR, version: int = 1) -> GraphSnap
             g.add_edge(r["id"], dim, key="AFETA")
 
     for c in _read(directory, "caracteristicas"):
+        get_fact_key(c["fact_key"])  # erro claro se a chave não existir no registro
         g.add_node(c["id"], type="caracteristica", label=c["label"], fact_key=c["fact_key"])
         for exp in c["expoe_a"]:
             if g.nodes.get(exp["risco"], {}).get("type") != "risco":
