@@ -12,6 +12,8 @@ from app.config import get_settings
 
 Effort = Literal["low", "medium"]
 REFUSAL = "Desculpe, não consigo ajudar com isso por aqui. Posso seguir com outra pergunta?"
+# Fallback do servidor em recusa: só nos modelos que o aceitam (Haiku não tem).
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 @cache
@@ -38,6 +40,13 @@ def _system(prompt: str) -> list[dict]:
     return [{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}]
 
 
+def _fallback(model: str) -> dict:
+    """Parâmetros de fallback do servidor para o modelo; vazio quando ele não aceita."""
+    if "haiku" in model:
+        return {}
+    return {"betas": [FALLBACK_BETA], "fallbacks": "default"}
+
+
 async def parse[T: BaseModel](
     *,
     model: str,
@@ -48,13 +57,14 @@ async def parse[T: BaseModel](
     max_tokens: int = 2048,
 ) -> T | None:
     """Saída estruturada. Devolve None em recusa (o chamador segue sem o resultado)."""
-    response = await get_client().messages.parse(
+    response = await get_client().beta.messages.parse(
         model=model,
         max_tokens=max_tokens,
         system=_system(system),
         messages=messages,
         output_format=output_format,
         output_config={"effort": effort},
+        **_fallback(model),
     )
     if response.stop_reason == "refusal":
         return None
@@ -70,16 +80,16 @@ async def stream_text(
     max_tokens: int = 1024,
 ) -> AsyncIterator[str]:
     """Texto exibido ao usuário, em pedaços. Em recusa, emite o texto de template."""
-    async with get_client().messages.stream(
+    async with get_client().beta.messages.stream(
         model=model,
         max_tokens=max_tokens,
         system=_system(system),
         messages=messages,
         output_config={"effort": effort},
+        **_fallback(model),
     ) as stream:
         async for text in stream.text_stream:
             yield text
         final = await stream.get_final_message()
     if final.stop_reason == "refusal":
         yield REFUSAL
-    # TODO: fallback do servidor quando o modelo principal for Opus (Haiku não tem).

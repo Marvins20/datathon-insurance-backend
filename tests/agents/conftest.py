@@ -1,15 +1,28 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from app.agents import llm
 
+FIXTURES = Path(__file__).parents[1] / "fixtures" / "llm"
+
+
+def load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
 
 class FakeLLM:
-    """Substitui llm.parse / llm.stream_text: devolve respostas prontas e registra as chamadas."""
+    """Substitui llm.parse / llm.stream_text: respostas prontas (fixtures) e registro das chamadas.
+    Nenhum teste chama a API real da Anthropic."""
 
     def __init__(self) -> None:
         self.parsed: dict[type, object] = {}
         self.text = "Pergunta de teste?"
         self.calls: list[dict] = []
+
+    def respond(self, output_format: type, fixture: str) -> None:
+        self.parsed[output_format] = output_format.model_validate(load_fixture(fixture))
 
     async def parse(self, *, output_format, **kwargs):
         self.calls.append({"output_format": output_format, **kwargs})
