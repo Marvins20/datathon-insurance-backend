@@ -87,15 +87,34 @@ def level(count: int) -> str:
     return "baixo" if count == 0 else "medio" if count <= 2 else "alto"
 
 
+# Código IBGE: os 2 primeiros dígitos identificam a UF.
+UF_CODES = {
+    "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
+    "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
+    "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP", "41": "PR",
+    "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
+}  # fmt: skip
+
+
 def build(contexto: Path, base: Path, out: Path) -> pd.DataFrame:
+    """Municípios da base + todos com registro no Atlas (para a jornada web). Município fora da
+    tabela fica sem fato de risco climático (desconhecido), só com o roubo da UF."""
     counts = disaster_counts(contexto / "registros_desastres.zip")
     robbery = robbery_levels(contexto / "dados-crime-no-brasil-por-uf.xlsx")
     places = pd.read_csv(base / "enderecos_estabelecimentos.csv", encoding="utf-8-sig", dtype=str)
+    places = places[["codigo_ibge_municipio", "uf_real"]].rename(
+        columns={"codigo_ibge_municipio": "municipio_ibge", "uf_real": "uf"}
+    )
+    atlas = pd.DataFrame({"municipio_ibge": counts.index})
+    atlas["uf"] = atlas["municipio_ibge"].str[:2].map(UF_CODES)
     places = (
-        places[["codigo_ibge_municipio", "uf_real"]]
-        .drop_duplicates()
-        .rename(columns={"codigo_ibge_municipio": "municipio_ibge", "uf_real": "uf"})
+        pd.concat([places, atlas.dropna()])
+        .drop_duplicates("municipio_ibge")
         .sort_values("municipio_ibge")
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(sorted(robbery.items()), columns=["uf", "risco_roubo_regiao"]).to_csv(
+        out.parent / "risco_uf.csv", index=False
     )
     rows = []
     for m, uf in places.itertuples(index=False):
@@ -110,7 +129,6 @@ def build(contexto: Path, base: Path, out: Path) -> pd.DataFrame:
             }
         )
     table = pd.DataFrame(rows)
-    out.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(out, index=False)
     return table
 
