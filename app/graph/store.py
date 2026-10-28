@@ -18,7 +18,10 @@ class GraphSnapshot:
 
 
 def _read(directory: Path, name: str) -> list[dict]:
-    with (directory / f"{name}.yaml").open(encoding="utf-8") as f:
+    path = directory / f"{name}.yaml"
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or []
 
 
@@ -39,7 +42,8 @@ def load_snapshot(directory: Path = ONTOLOGY_DIR, version: int = 1) -> GraphSnap
                 raise ValueError(f"{c['id']}: risco inexistente {exp['risco']!r}")
             g.add_edge(c["id"], exp["risco"], key="EXPOE_A", weight=exp["peso"])
 
-    for p in _read(directory, "priors"):
+    # priors.yaml: sementes manuais; priors_base.yaml: cold start gerado da base (seed_priors).
+    for p in _read(directory, "priors") + _read(directory, "priors_base"):
         if g.nodes.get(p["caracteristica"], {}).get("type") != "caracteristica":
             raise ValueError(f"prior: característica inexistente {p['caracteristica']!r}")
         g.add_node(p["atividade"], type="atividade", label=p["atividade"])

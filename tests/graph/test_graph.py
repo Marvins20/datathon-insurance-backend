@@ -29,8 +29,8 @@ def test_probability_backs_off_to_division(snapshot) -> None:
 
 
 def test_unknown_activity_has_no_hypothesis(snapshot) -> None:
-    assert probability(snapshot, "4711-3/02", "mercadoria_refrigerada") is None
-    assert hypotheses(snapshot, "4711-3/02") == {}
+    assert probability(snapshot, "6201-5/01", "mercadoria_refrigerada") is None
+    assert hypotheses(snapshot, "6201-5/01") == {}
 
 
 def test_hypotheses_are_deterministic(snapshot) -> None:

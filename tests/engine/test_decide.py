@@ -25,7 +25,7 @@ def codes(decision) -> set[str]:
 
 
 def test_case_eligible_complete(catalog, graph) -> None:
-    d = decide(make_facts(**NO_IMPEDIMENTS, cnae_principal="4721-1/02"), catalog, graph)
+    d = decide(make_facts(**NO_IMPEDIMENTS, cnae_principal="6201-5/01"), catalog, graph)
     assert d.status == "conclusiva"
     assert d.eligibility.status == "elegivel"
     assert d.offers[0].plan_code == "ESSENCIAL"
