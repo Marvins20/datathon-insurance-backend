@@ -10,12 +10,13 @@ from app.domain.decision import (
     Violation,
 )
 from app.domain.facts import Fact
-from app.engine.cards import build_cards, card_order, lock_reason
+from app.engine.cards import applicability, build_cards, card_order, lock_reason
 from app.engine.catalog import Catalog
 from app.engine.decide import case_context
 from app.engine.explain_template import describe
 from app.engine.prefill import quote_prefill
 from app.engine.recommender import offer_violations, size_coverage
+from app.engine.rules import Tri
 from app.graph.store import GraphSnapshot
 
 CUSTOMIZE_RULE_ID = "PERSONALIZAR"
@@ -46,24 +47,26 @@ def customize(
     coverages = {c.code: c for c in current.coverages}
     violations: list[Violation] = []
 
-    def reject(code: str | None, message: str) -> None:
-        violations.append(Violation(code=code, message=message))
+    def reject(kind: str, coverage: str | None, message: str) -> None:
+        violations.append(Violation(code=kind, coverage_code=coverage, message=message))
 
     for change in request.coverages:
         cov = catalog.coverages.get(change.code)
         if cov is None:
-            reject(change.code, "Cobertura inexistente no catálogo.")
+            reject("cobertura_desconhecida", change.code, "Cobertura inexistente no catálogo.")
             continue
         if not change.active:
             if cov.grupo == "fixa":
-                reject(cov.codigo, "Cobertura fixa: não pode ser desligada.")
+                reject("fixa_nao_removivel", cov.codigo, "Cobertura fixa: não pode ser desligada.")
             else:
                 coverages.pop(cov.codigo, None)
             continue
 
         if cov.codigo not in coverages:
             if reason := lock_reason(cov, base.plan_code, facts, catalog):
-                reject(cov.codigo, reason)
+                contradicted = applicability(cov, facts) is Tri.FALSO
+                kind = "incompativel_atividade" if contradicted else "grupo_nao_permitido_no_plano"
+                reject(kind, cov.codigo, reason)
                 continue
             if cov.codigo in base_items:
                 coverages[cov.codigo] = base_items[cov.codigo]
@@ -87,7 +90,8 @@ def customize(
                 cov.is_max is not None and change.insured_amount > cov.is_max
             ):
                 upper = f" e {cov.is_max}" if cov.is_max is not None else ""
-                reject(cov.codigo, f"Importância segurada fora dos limites ({low}{upper}).")
+                message = f"Importância segurada fora dos limites ({low}{upper})."
+                reject("is_fora_dos_limites", cov.codigo, message)
             else:
                 coverages[cov.codigo] = coverages[cov.codigo].model_copy(
                     update={"is_escolhida": change.insured_amount}
@@ -95,14 +99,17 @@ def customize(
 
     term = catalog.term
     if request.vigencia_anos is not None and not term.min <= request.vigencia_anos <= term.max:
-        reject(None, f"Vigência deve ficar entre {term.min} e {term.max} anos.")
+        message = f"Vigência deve ficar entre {term.min} e {term.max} anos."
+        reject("vigencia_fora_dos_limites", None, message)
 
     premium = current.premium_benefit
     if request.premium_benefit is not None:
         if premium is None:
-            reject(None, "Benefício Premium só existe no plano Total.")
+            reject(
+                "beneficio_premium_invalido", None, "Benefício Premium só existe no plano Total."
+            )
         elif request.premium_benefit not in premium["options"]:
-            reject(None, "Benefício Premium inválido.")
+            reject("beneficio_premium_invalido", None, "Benefício Premium inválido.")
 
     if violations:
         return CustomizeResult(offer=None, violations=violations)
@@ -121,8 +128,12 @@ def customize(
     # Mudança válida para o cliente mas inválida no catálogo é bug de regra.
     problems = offer_violations(offer, catalog)
     if problems:
+        # Combinação que o catálogo não admite: recusada como grupo não permitido no plano.
         return CustomizeResult(
-            offer=None, violations=[Violation(code=None, message=p) for p in problems]
+            offer=None,
+            violations=[
+                Violation(code="grupo_nao_permitido_no_plano", message=p) for p in problems
+            ],
         )
 
     vigencia = request.vigencia_anos or (

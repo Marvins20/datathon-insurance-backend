@@ -49,14 +49,14 @@ def test_violations(catalog, graph) -> None:
     )
     result = customize(base, request, facts, catalog, graph)
     assert result.offer is None
-    assert [v.code for v in result.violations] == [
-        "INCENDIO_RAIO_EXPLOSAO_FUMACA",
-        "DELIVERY",
-        "QUEBRA_VIDROS",
-        "XPTO",
-        "DANOS_ELETRICOS",
-        None,
-        None,
+    assert [(v.code, v.coverage_code) for v in result.violations] == [
+        ("fixa_nao_removivel", "INCENDIO_RAIO_EXPLOSAO_FUMACA"),
+        ("grupo_nao_permitido_no_plano", "DELIVERY"),
+        ("grupo_nao_permitido_no_plano", "QUEBRA_VIDROS"),
+        ("cobertura_desconhecida", "XPTO"),
+        ("is_fora_dos_limites", "DANOS_ELETRICOS"),
+        ("vigencia_fora_dos_limites", None),
+        ("beneficio_premium_invalido", None),
     ]
 
 
@@ -131,4 +131,6 @@ def test_specific_blocked_when_fact_says_no(catalog, graph) -> None:
         catalog,
         graph,
     )
-    assert [v.code for v in result.violations] == ["DELIVERY"]
+    assert [(v.code, v.coverage_code) for v in result.violations] == [
+        ("incompativel_atividade", "DELIVERY")
+    ]

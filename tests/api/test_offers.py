@@ -48,5 +48,10 @@ def test_violations_and_token() -> None:
         headers=H,
         json={"coverages": [{"code": "DANOS_ELETRICOS", "active": False}]},
     )
-    assert r.status_code == 422 and r.json()["violations"][0]["code"] == "DANOS_ELETRICOS"
+    violation = r.json()["violations"][0]
+    assert r.status_code == 422
+    assert (violation["code"], violation["coverage_code"]) == (
+        "fixa_nao_removivel",
+        "DANOS_ELETRICOS",
+    )
     assert client.get(f"{URL}/of_1", headers={"X-Case-Token": "x"}).status_code == 404

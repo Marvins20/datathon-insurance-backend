@@ -194,8 +194,22 @@ class CustomizeRequest(BaseModel):
     reset: bool = False
 
 
+ViolationCode = Literal[
+    "cobertura_desconhecida",
+    "fixa_nao_removivel",
+    "grupo_nao_permitido_no_plano",
+    "incompativel_atividade",
+    "is_fora_dos_limites",
+    "vigencia_fora_dos_limites",
+    "beneficio_premium_invalido",
+]
+
+
 class Violation(BaseModel):
-    code: str | None
+    """Recusa do motor em Personalizar (CONTRATOS_API §6.1)."""
+
+    code: ViolationCode
+    coverage_code: str | None = None
     message: str
 
 
