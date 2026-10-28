@@ -4,6 +4,7 @@ from typing import Any
 
 from app.domain.decision import Decision, Hypothesis, Need, Versions
 from app.domain.facts import Fact
+from app.engine.cards import build_cards
 from app.engine.catalog import Catalog
 from app.engine.eligibility import assess_eligibility
 from app.engine.estimates import Input, basic_midpoint, build_inputs
@@ -71,7 +72,11 @@ def decide(facts: dict[str, Fact], catalog: Catalog, graph: GraphSnapshot) -> De
     best = offers[0]
     offers = [
         o.model_copy(
-            update={**describe(o, best), "quote_prefill": quote_prefill(o, inputs, catalog)}
+            update={
+                **describe(o, best),
+                "quote_prefill": quote_prefill(o, inputs, catalog),
+                "coverage_cards": build_cards(o, facts, catalog),
+            }
         )
         for o in offers
     ]

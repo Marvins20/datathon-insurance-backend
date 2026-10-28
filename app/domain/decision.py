@@ -71,6 +71,29 @@ class OfferCoverage(BaseModel):
     data_used: list[str] = []
     calc_rule: str | None = None
     note: str | None = None
+    # `adicionada_cliente`: incluída em Personalizar (não estava na oferta de origem).
+    origin: Literal["sugerida", "adicionada_cliente"] = "sugerida"
+    is_escolhida: int | None = None  # IS escolhida em Personalizar; None mantém a sugerida
+
+
+class CoverageCard(BaseModel):
+    """Um card por cobertura do catálogo: o que está coberto, o que dá para incluir e o que está
+    bloqueado (com motivo). É a base da tela de Personalizar."""
+
+    code: str
+    name: str
+    group: CoverageGroup
+    dimension: str
+    status: Literal["incluida", "disponivel", "indisponivel"]
+    suggested: bool  # estava na oferta de origem do motor
+    origin: Literal["sugerida", "adicionada_cliente"] | None = None  # só quando incluída
+    actions: list[Literal["remover", "adicionar", "ajustar_is"]] = []
+    lock_reason: str | None = None
+    insured_amount: InsuredAmount | None = None
+    is_escolhida: int | None = None
+    is_limits: InsuredAmount | None = None
+    justification: str | None = None
+    warning: str | None = None
 
 
 class Reason(BaseModel):
@@ -127,6 +150,8 @@ class Offer(BaseModel):
     quote_prefill: QuotePrefill | None = None
     explanation_md: str = ""
     explanation_source: Literal["template", "llm_validado"] = "template"
+    base_offer_id: str | None = None  # só na `personalizada`: oferta de origem
+    coverage_cards: list[CoverageCard] = []
 
 
 class Confidence(BaseModel):

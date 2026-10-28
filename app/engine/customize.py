@@ -1,14 +1,16 @@
 """Personalizar: aplica as mudanças do cliente sobre uma oferta e devolve a oferta `personalizada`
-ou as violações. Nenhum preço é calculado."""
+(com os cards de cobertura) ou as violações. Nenhum preço é calculado."""
 
 from app.domain.decision import (
     CustomizeRequest,
     CustomizeResult,
     Offer,
     OfferCoverage,
+    PrefillCoverage,
     Violation,
 )
 from app.domain.facts import Fact
+from app.engine.cards import build_cards, card_order, lock_reason
 from app.engine.catalog import Catalog
 from app.engine.decide import case_context
 from app.engine.explain_template import describe
@@ -25,15 +27,23 @@ def customize(
     facts: dict[str, Fact],
     catalog: Catalog,
     graph: GraphSnapshot,
+    current: Offer | None = None,
 ) -> CustomizeResult:
-    """`base`: a oferta de origem (de `decide`). `reset` devolve a base (Oferta padrão)."""
+    """`base`: a oferta de origem (de `decide`). `current`: a personalizada atual, para mudanças
+    cumulativas (um clique por vez nos cards); sem ela, aplica sobre a base. `reset` devolve a base
+    (Oferta padrão). Coberturas sugeridas retiradas voltam com a faixa original."""
+    suggested = {c.code for c in base.coverages}
     if request.reset:
-        return CustomizeResult(offer=base)
+        return CustomizeResult(
+            offer=base.model_copy(
+                update={"coverage_cards": build_cards(base, facts, catalog, suggested)}
+            )
+        )
 
+    current = current or base
     _, inputs, _ = case_context(facts, graph)
-    plan = catalog.plans[base.plan_code]
-    coverages = {c.code: c for c in base.coverages}
-    chosen_is: dict[str, int] = {}
+    base_items = {c.code: c for c in base.coverages}
+    coverages = {c.code: c for c in current.coverages}
     violations: list[Violation] = []
 
     def reject(code: str | None, message: str) -> None:
@@ -51,24 +61,25 @@ def customize(
                 coverages.pop(cov.codigo, None)
             continue
 
-        if cov.grupo == "especifica_atividade" and not plan.permite_especificas:
-            reject(cov.codigo, "Coberturas específicas da atividade só no Prático ou no Total.")
-            continue
-        if cov.grupo == "padrao_plano" and cov.codigo not in plan.padrao:
-            reject(cov.codigo, f"Não faz parte do plano {base.plan_code}; escolha um plano acima.")
-            continue
         if cov.codigo not in coverages:
-            item = OfferCoverage(
-                code=cov.codigo,
-                name=cov.nome,
-                group=cov.grupo,
-                rule_id=CUSTOMIZE_RULE_ID,
-                fact_keys=[],
-                risk=None,
-                need=cov.dimensao,
-                justification="Incluída por você em Personalizar.",
-            )
-            coverages[cov.codigo] = size_coverage(item, inputs, catalog)
+            if reason := lock_reason(cov, base.plan_code, facts, catalog):
+                reject(cov.codigo, reason)
+                continue
+            if cov.codigo in base_items:
+                coverages[cov.codigo] = base_items[cov.codigo]
+            else:
+                item = OfferCoverage(
+                    code=cov.codigo,
+                    name=cov.nome,
+                    group=cov.grupo,
+                    rule_id=CUSTOMIZE_RULE_ID,
+                    fact_keys=[],
+                    risk=None,
+                    need=cov.dimensao,
+                    justification="Incluída por você em Personalizar.",
+                    origin="adicionada_cliente",
+                )
+                coverages[cov.codigo] = size_coverage(item, inputs, catalog)
 
         if change.insured_amount is not None:
             low = cov.is_min if cov.is_min is not None else 1
@@ -78,13 +89,15 @@ def customize(
                 upper = f" e {cov.is_max}" if cov.is_max is not None else ""
                 reject(cov.codigo, f"Importância segurada fora dos limites ({low}{upper}).")
             else:
-                chosen_is[cov.codigo] = change.insured_amount
+                coverages[cov.codigo] = coverages[cov.codigo].model_copy(
+                    update={"is_escolhida": change.insured_amount}
+                )
 
     term = catalog.term
     if request.vigencia_anos is not None and not term.min <= request.vigencia_anos <= term.max:
         reject(None, f"Vigência deve ficar entre {term.min} e {term.max} anos.")
 
-    premium = base.premium_benefit
+    premium = current.premium_benefit
     if request.premium_benefit is not None:
         if premium is None:
             reject(None, "Benefício Premium só existe no plano Total.")
@@ -96,10 +109,11 @@ def customize(
 
     if premium is not None:
         premium = {**premium, "selected": request.premium_benefit or premium.get("selected")}
-    offer = base.model_copy(
+    offer = current.model_copy(
         update={
             "offer_id": f"{base.offer_id}_p",
             "kind": "personalizada",
+            "base_offer_id": base.offer_id,
             "coverages": sorted(coverages.values(), key=lambda c: c.code),
             "premium_benefit": premium,
         }
@@ -111,9 +125,17 @@ def customize(
             offer=None, violations=[Violation(code=None, message=p) for p in problems]
         )
 
-    prefill = quote_prefill(
-        offer, inputs, catalog, vigencia_anos=request.vigencia_anos, chosen_is=chosen_is
+    vigencia = request.vigencia_anos or (
+        current.quote_prefill.vigencia_anos if current.quote_prefill else None
     )
+    chosen_is = {c.code: c.is_escolhida for c in offer.coverages if c.is_escolhida is not None}
+    prefill = quote_prefill(offer, inputs, catalog, vigencia_anos=vigencia, chosen_is=chosen_is)
+    # Sugeridas e retiradas seguem no formulário, desligadas.
+    removed = sorted(suggested - coverages.keys(), key=lambda c: card_order(catalog, c))
+    prefill.coberturas += [PrefillCoverage(code=c, ativa=False, is_sugerida=None) for c in removed]
+    offer = offer.model_copy(update={**describe(offer, base), "quote_prefill": prefill})
     return CustomizeResult(
-        offer=offer.model_copy(update={**describe(offer, base), "quote_prefill": prefill})
+        offer=offer.model_copy(
+            update={"coverage_cards": build_cards(offer, facts, catalog, suggested)}
+        )
     )
