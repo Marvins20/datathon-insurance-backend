@@ -56,3 +56,35 @@ def load_snapshot(directory: Path = ONTOLOGY_DIR, version: int = 1) -> GraphSnap
         )
 
     return GraphSnapshot(version=version, graph=g)
+
+
+# --- linhas de banco (kg_nodes / kg_edges) ↔ snapshot. Funções puras; o IO fica em db/. -------
+
+EDGE_ATTRS = ("alpha", "beta", "weight")
+
+
+def snapshot_to_rows(snapshot: GraphSnapshot) -> tuple[list[dict], list[dict]]:
+    nodes = [
+        {
+            "id": n,
+            "type": d["type"],
+            "label": d["label"],
+            "attrs": {k: v for k, v in d.items() if k not in ("type", "label")},
+        }
+        for n, d in sorted(snapshot.graph.nodes(data=True))
+    ]
+    edges = [
+        {"src": s, "dst": t, "type": k, **{a: d.get(a) for a in EDGE_ATTRS}}
+        for s, t, k, d in sorted(snapshot.graph.edges(keys=True, data=True))
+    ]
+    return nodes, edges
+
+
+def snapshot_from_rows(version: int, nodes: list[dict], edges: list[dict]) -> GraphSnapshot:
+    g = nx.MultiDiGraph()
+    for n in nodes:
+        g.add_node(n["id"], type=n["type"], label=n["label"], **(n.get("attrs") or {}))
+    for e in edges:
+        attrs = {a: e[a] for a in EDGE_ATTRS if e.get(a) is not None}
+        g.add_edge(e["src"], e["dst"], key=e["type"], **attrs)
+    return GraphSnapshot(version=version, graph=g)

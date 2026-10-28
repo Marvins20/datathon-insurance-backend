@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -20,6 +20,8 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000"]
     )
 
+    # memory: casos e checkpointer em memória (demo local, testes); postgres: Supabase.
+    persistence: Literal["memory", "postgres"] = "memory"
     kg_version: str = "latest"
     demo_mode: bool = False
     enrichment_timeout_s: float = 5

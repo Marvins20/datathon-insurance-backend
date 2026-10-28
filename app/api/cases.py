@@ -21,6 +21,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agents.profiling.runner import TurnRunner, thread_config
 from app.api.sse import HEARTBEAT_S, EventBus
+from app.db.repositories import cases as case_repo
 from app.domain.case import CaseSnapshot, ChatMessage, Progress, Recommendation
 from app.domain.decision import Decision
 from app.domain.facts import Fact, FactSource, FactStatus
@@ -28,6 +29,7 @@ from app.engine.catalog import Catalog
 from app.engine.explain_graph import trail_graph
 from app.engine.profile_cards import profile_cards
 from app.engine.questions import build_question
+from app.graph.learning import LearningEvent
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 limiter = Limiter(key_func=get_remote_address)
@@ -56,16 +58,35 @@ def _error(code: int, kind: str, message: str) -> HTTPException:
 
 
 class CaseStore:
+    """Casos em memória; com `attach(sessionmaker)` (PERSISTENCE=postgres) grava também no banco:
+    cadastro, fatos, auditoria, recomendações e learning_events. O token nunca é guardado, só
+    o hash."""
+
     def __init__(self) -> None:
         self._cases: dict[str, CaseRecord] = {}
+        self._sessions = None
 
-    def create(self) -> tuple[str, str]:
+    def attach(self, sessionmaker) -> None:
+        self._sessions = sessionmaker
+
+    async def create(self, channel: str) -> tuple[str, str]:
         case_id, token = str(uuid.uuid4()), secrets.token_urlsafe(32)
-        self._cases[case_id] = CaseRecord(_hash(token), datetime.now(UTC))
+        record = CaseRecord(_hash(token), datetime.now(UTC))
+        self._cases[case_id] = record
+        if self._sessions:
+            async with self._sessions() as session, session.begin():
+                await case_repo.create_case(
+                    session, case_id, record.token_hash, channel, record.created_at
+                )
         return case_id, token
 
-    def get(self, case_id: str, token: str | None) -> CaseRecord:
+    async def get(self, case_id: str, token: str | None) -> CaseRecord:
         case = self._cases.get(case_id)
+        if case is None and self._sessions:  # caso de antes de um restart
+            async with self._sessions() as session:
+                token_hash = await case_repo.get_token_hash(session, case_id)
+            if token_hash:
+                case = self._cases.setdefault(case_id, CaseRecord(token_hash, datetime.now(UTC)))
         if case is None or not hmac.compare_digest(case.token_hash, _hash(token or "")):
             raise _error(404, "case_not_found", "Caso não encontrado.")
         return case
@@ -73,17 +94,56 @@ class CaseStore:
     def record(self, case_id: str) -> CaseRecord:
         return self._cases[case_id]
 
+    async def audit(self, case_id: str, type_: str, payload: dict, actor: str) -> None:
+        ts = datetime.now(UTC)
+        self._cases[case_id].events.append({"type": type_, **payload, "ts": ts.isoformat()})
+        if self._sessions:
+            async with self._sessions() as session, session.begin():
+                await case_repo.append_event(session, case_id, type_, payload, actor, ts)
+
+    async def persist_decision(
+        self, case_id: str, rec: Recommendation, facts: dict[str, Fact], learning_keys: set[str]
+    ) -> None:
+        if not self._sessions:
+            return
+        status_ = "inelegivel" if rec.eligibility.status == "inelegivel" else "recomendado"
+        cnae = facts.get("cnae_principal")
+        async with self._sessions() as session, session.begin():
+            await case_repo.upsert_facts(session, case_id, list(facts.values()))
+            await case_repo.save_recommendation(session, rec, status_)
+            if cnae and cnae.is_known:
+                await case_repo.record_learning(
+                    session, case_id, cnae.value, facts, learning_keys, rec.created_at
+                )
+
+
+def learning_events(
+    facts: dict[str, Fact], characteristic_keys: set[str]
+) -> dict[str, LearningEvent]:
+    """Só fatos `confirmado` das características do grafo realimentam o grafo (§4.3)."""
+    cnae = facts.get("cnae_principal")
+    if cnae is None or not cnae.is_known:
+        return {}
+    return {
+        key: LearningEvent(str(cnae.value), key, bool(facts[key].value))
+        for key in sorted(characteristic_keys & facts.keys())
+        if facts[key].status is FactStatus.CONFIRMADO and isinstance(facts[key].value, bool)
+    }
+
 
 def build_runner(app) -> TurnRunner:
     """Liga o executor de turnos ao EventBus e aos repositórios da aplicação."""
 
-    def on_decision(case_id: str, decision: Decision, facts: dict[str, Fact]) -> None:
+    async def on_decision(case_id: str, decision: Decision, facts: dict[str, Fact]) -> None:
         case = app.state.cases.record(case_id)
         rec = Recommendation.from_decision(
             f"rec_{uuid.uuid4().hex[:12]}", case_id, decision, datetime.now(UTC)
         )
         case.recommendation = rec
         app.state.offers.save_hashed(case_id, case.token_hash, decision.offers, facts)
+        keys = app.state.characteristic_keys
+        app.state.learning[case_id] = learning_events(facts, keys)
+        await app.state.cases.persist_decision(case_id, rec, facts, keys)
         app.state.bus.publish(case_id, "recommendation.ready", rec.model_dump(mode="json"))
 
     return TurnRunner(
@@ -167,7 +227,7 @@ async def create_case(
 ):
     if not body.consent:
         raise _error(422, "consent_required", "É preciso consentir com o uso dos dados.")
-    case_id, token = store.create()
+    case_id, token = await store.create(body.channel)
     question = build_question("cnae_principal", 0.5, None, 0.0, catalog)
     await request.app.state.profile_graph.aupdate_state(
         thread_config(case_id),
@@ -188,7 +248,7 @@ async def create_case(
 async def get_case(
     case_id: str, store: Store, runner: Runner, catalog: CatalogDep, x_case_token: CaseToken = None
 ) -> CaseSnapshot:
-    case = store.get(case_id, x_case_token)
+    case = await store.get(case_id, x_case_token)
     state = await runner.state(case_id)
     decision: Decision | None = state.get("decision")
     question = state.get("question")
@@ -233,7 +293,7 @@ async def case_events(
 ) -> EventSourceResponse:
     """`text/event-stream`. Retoma a partir de `Last-Event-ID`. `follow=false` devolve só o
     histórico e fecha (diagnóstico e testes)."""
-    store.get(case_id, x_case_token)
+    await store.get(case_id, x_case_token)
 
     async def stream():
         if not follow:
@@ -257,7 +317,7 @@ async def post_message(
     runner: Runner,
     x_case_token: CaseToken = None,
 ) -> Accepted:
-    store.get(case_id, x_case_token)
+    await store.get(case_id, x_case_token)
     turn_id = _turn_id()
     background.add_task(runner.run, case_id, turn_id, {"messages": [("user", body.text)]})
     return Accepted(turn_id=turn_id)
@@ -282,7 +342,7 @@ async def put_fact(
     x_case_token: CaseToken = None,
 ) -> Accepted:
     """Resposta direta ou edição de card: estado `confirmado`, origem `usuario_resposta`."""
-    store.get(case_id, x_case_token)
+    await store.get(case_id, x_case_token)
     return _fact_command(
         case_id, _user_fact(key, body.value, FactStatus.CONFIRMADO), background, runner
     )
@@ -300,7 +360,7 @@ async def confirm_fact(
     x_case_token: CaseToken = None,
 ) -> Accepted:
     """Confirma o card `observado`/`estimado` com o valor atual."""
-    store.get(case_id, x_case_token)
+    await store.get(case_id, x_case_token)
     current = (await runner.state(case_id)).get("facts", {}).get(key)
     if current is None or current.value is None:
         raise _error(404, "fact_not_found", "Não há valor para confirmar.")
@@ -321,7 +381,7 @@ async def reject_fact(
     x_case_token: CaseToken = None,
 ) -> Accepted:
     """Usuário remove o card: estado `rejeitado`; o grafo não volta a sugerir o valor."""
-    store.get(case_id, x_case_token)
+    await store.get(case_id, x_case_token)
     return _fact_command(case_id, _user_fact(key, None, FactStatus.REJEITADO), background, runner)
 
 
@@ -329,7 +389,7 @@ async def reject_fact(
 async def get_recommendation(
     case_id: str, store: Store, x_case_token: CaseToken = None
 ) -> Recommendation:
-    case = store.get(case_id, x_case_token)
+    case = await store.get(case_id, x_case_token)
     if case.recommendation is None:
         raise _error(404, "recommendation_not_ready", "A recomendação ainda não está pronta.")
     return case.recommendation
@@ -339,7 +399,7 @@ async def get_recommendation(
 async def explain_graph(
     case_id: str, store: Store, offer_id: str = "of_1", x_case_token: CaseToken = None
 ) -> dict:
-    case = store.get(case_id, x_case_token)
+    case = await store.get(case_id, x_case_token)
     offers = {o.offer_id: o for o in (case.recommendation.offers if case.recommendation else [])}
     if offer_id not in offers:
         raise _error(404, "offer_not_found", "Oferta não encontrada.")
@@ -351,8 +411,6 @@ async def review_request(
     case_id: str, body: ReviewRequest, store: Store, x_case_token: CaseToken = None
 ) -> dict:
     """Pedido de revisão humana da decisão automatizada (LGPD art. 20), registrado na auditoria."""
-    case = store.get(case_id, x_case_token)
-    case.events.append(
-        {"type": "review_requested", "reason": body.reason, "ts": datetime.now(UTC).isoformat()}
-    )
+    await store.get(case_id, x_case_token)
+    await store.audit(case_id, "review_requested", {"reason": body.reason}, "usuario")
     return {"accepted": True}

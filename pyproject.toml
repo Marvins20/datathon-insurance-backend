@@ -32,6 +32,7 @@ dev = [
     "langgraph-cli[inmem]>=0.3",
     "xlrd>=2.0.2",
     "openpyxl>=3.1.5",
+    "aiosqlite>=0.22.1",
 ]
 
 [tool.uv]

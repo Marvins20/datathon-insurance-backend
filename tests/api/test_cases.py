@@ -1,11 +1,6 @@
 import json
 
-import pytest
 from fastapi.testclient import TestClient
-
-from app.agents import llm
-from app.main import create_app
-from tests.agents.conftest import FakeLLM
 
 BASE = "/api/v1/cases"
 NO_IMPEDIMENTS = (
@@ -15,14 +10,6 @@ NO_IMPEDIMENTS = (
     "parede_externa_combustivel",
     "objeto_ja_segurado_bb",
 )
-
-
-@pytest.fixture
-def client(monkeypatch) -> TestClient:
-    fake = FakeLLM()
-    monkeypatch.setattr(llm, "parse", fake.parse)
-    monkeypatch.setattr(llm, "stream_text", fake.stream_text)
-    return TestClient(create_app())
 
 
 def new_case(client: TestClient) -> tuple[str, dict]:

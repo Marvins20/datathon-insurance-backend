@@ -1,20 +1,53 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from app.agents.profiling.graph import build_graph
-from app.api import cases, offers
+from app.agents.profiling.nodes.common import set_snapshot
+from app.api import cases, dev, offers
 from app.api.sse import EventBus
 from app.config import get_settings
 from app.engine.catalog import default_catalog
 from app.graph.store import load_snapshot
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """PERSISTENCE=postgres: checkpointer, casos e grafo publicado no Postgres (Supabase)."""
+    settings = get_settings()
+    if settings.persistence != "postgres":
+        yield
+        return
+
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    from app.db.repositories import graph as graph_repo
+    from app.db.session import get_sessionmaker
+
+    conninfo = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+    async with AsyncPostgresSaver.from_conn_string(conninfo) as saver:
+        await saver.setup()
+        sessions = get_sessionmaker()
+        app.state.sessions = sessions
+        app.state.cases.attach(sessions)
+        async with sessions() as session:
+            version = await graph_repo.latest_published(session)
+            if version is not None:
+                app.state.graph = await graph_repo.load(session, version)
+                set_snapshot(app.state.graph)
+        app.state.profile_graph = build_graph().compile(checkpointer=saver)
+        app.state.runner = cases.build_runner(app)
+        yield
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Negócio de Pé API", version="0.1.0")
+    app = FastAPI(title="Negócio de Pé API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -24,22 +57,46 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.state.catalog = default_catalog()
-    app.state.graph = load_snapshot()
-    app.state.offers = offers.OfferRepository()
-    app.state.cases = cases.CaseStore()
-    app.state.bus = EventBus()
-    # Checkpointer em memória (uma instância); AsyncPostgresSaver entra com a camada de banco.
-    app.state.profile_graph = build_graph().compile(checkpointer=InMemorySaver())
-    app.state.runner = cases.build_runner(app)
-    app.state.limiter = cases.limiter
+    state = app.state
+    state.catalog = default_catalog()
+    state.graph_seed = state.graph = load_snapshot()
+    set_snapshot(state.graph)
+    state.characteristic_keys = {
+        d["fact_key"] for _, d in state.graph.graph.nodes(data=True) if d.get("fact_key")
+    }
+    state.offers = offers.OfferRepository()
+    state.cases = cases.CaseStore()
+    state.bus = EventBus()
+    state.sessions = None
+    state.learning = {}  # case_id → {característica: LearningEvent} (só confirmados)
+    state.kg_drafts = {}  # versões rascunho em memória
+    # Em memória por padrão; o lifespan troca por AsyncPostgresSaver com PERSISTENCE=postgres.
+    state.profile_graph = build_graph().compile(checkpointer=InMemorySaver())
+    state.runner = cases.build_runner(app)
+    state.limiter = cases.limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.include_router(cases.router)
     app.include_router(offers.router)
+    if settings.enable_dev_routes:
+        app.include_router(dev.router)
 
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health(deep: bool = False) -> dict:
+        if not deep:
+            return {"status": "ok"}
+        result = {
+            "status": "ok",
+            "kg_version": state.graph.version,
+            "kg_edges": state.graph.graph.number_of_edges(),
+        }
+        if state.sessions:
+            try:
+                async with state.sessions() as session:
+                    await session.execute(text("SELECT 1"))
+                result["database"] = "ok"
+            except Exception as error:
+                result |= {"status": "degraded", "database": str(error)}
+        return result
 
     return app
 

@@ -2,7 +2,8 @@
 
 Recebe `publish(case_id, event, data)` para não depender da camada de API."""
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
@@ -13,7 +14,7 @@ from app.engine.catalog import Catalog
 from app.engine.profile_cards import fact_card
 
 Publish = Callable[[str, str, Any], Any]
-OnDecision = Callable[[str, Decision, dict[str, Fact]], None]
+OnDecision = Callable[[str, Decision, dict[str, Fact]], Awaitable[None] | None]
 
 
 def thread_config(case_id: str) -> dict:
@@ -53,7 +54,7 @@ class TurnRunner:
                         case_id, "message.delta", {"message_id": message_id, "delta": chunk["text"]}
                     )
             after = await self.state(case_id)
-            self._publish_changes(case_id, message_id, before, after)
+            await self._publish_changes(case_id, message_id, before, after)
         except Exception as error:  # o turno falha, o caso continua; o front pode reenviar
             publish(
                 case_id, "error", {"code": "turn_failed", "message": str(error), "retryable": True}
@@ -61,7 +62,9 @@ class TurnRunner:
         finally:
             publish(case_id, "turn.completed", {"turn_id": turn_id})
 
-    def _publish_changes(self, case_id: str, message_id: str, before: dict, after: dict) -> None:
+    async def _publish_changes(
+        self, case_id: str, message_id: str, before: dict, after: dict
+    ) -> None:
         publish = self.publish
         messages = after.get("messages", [])
         if messages and messages[-1].type == "ai":
@@ -89,5 +92,7 @@ class TurnRunner:
                     case_id, "eligibility.updated", decision.eligibility.model_dump(mode="json")
                 )
             if decision.offers:
-                self.on_decision(case_id, decision, new)
+                result = self.on_decision(case_id, decision, new)
+                if inspect.isawaitable(result):
+                    await result
         publish(case_id, "avatar.state", {"state": _avatar(decision)})
