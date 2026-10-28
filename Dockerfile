@@ -12,4 +12,5 @@ COPY . .
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Com PERSISTENCE=postgres, aplica as migrações antes de subir (1 instância no Railway).
+CMD ["sh", "-c", "if [ \"$PERSISTENCE\" = postgres ]; then alembic upgrade head; fi && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

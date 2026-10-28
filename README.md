@@ -35,8 +35,9 @@ conversa ───┘        ▲                    ▲        │        ├─
 | Context graph | `app/graph/` | Atividade → característica → risco → dimensão em NetworkX; priors α/β com back-off CNAE |
 | Agentes | `app/agents/` | LangGraph: Extrator (LLM rápido) → motor → Entrevistador ou Explicador (LLM + validador) |
 | Lote | `app/batch/` | Base comum → templates oficiais, trace e métricas (sem LLM, sem rede) |
-| Enriquecimento | `app/enrichment/` | Tabela de risco regional por município a partir de dados públicos |
-| API | `app/api/` | FastAPI: ofertas, cards e Personalizar |
+| Enriquecimento | `app/enrichment/` | Risco regional por município (dados públicos) e CEP → município (ViaCEP) na jornada web |
+| API | `app/api/` | FastAPI: caso anônimo com `X-Case-Token`, comandos 202, SSE, ofertas, cards e Personalizar |
+| Banco | `app/db/`, `migrations/` | Postgres (Supabase): casos, fatos, auditoria append-only, recomendações, grafo versionado |
 
 Fluxo do motor (`app/engine/decide.py`):
 
@@ -62,8 +63,10 @@ app/graph/               context graph (ontologia, priors, raciocinador, seed_pr
 app/agents/              LLM (único ponto de chamada), nós e prompts do perfilamento
 app/batch/               lote: loader, mapeamentos, writers, métricas
 app/enrichment/          geração de data/risco_municipio.csv
-app/api/                 rotas FastAPI
-data/risco_municipio.csv risco regional por município (derivado de dados públicos)
+app/api/                 rotas FastAPI (cases, offers, dev) e SSE
+app/db/ · migrations/    modelos, repositórios e migrações Alembic
+data/risco_*.csv         risco regional por município e roubo por UF (derivados de dados públicos)
+data/fixtures/api/       respostas gravadas de APIs públicas (DEMO_MODE)
 tests/                   motor, agentes, lote, API, grafo (fixtures; nenhuma chamada externa)
 ```
 
@@ -83,9 +86,13 @@ uv run python -m app.batch.run --input <pasta da base comum> --out-dir ../out/
 uv run pytest
 uv run ruff check . && uv run ruff format .
 
-# API e LangGraph Studio
+# API e LangGraph Studio (em memória por padrão: PERSISTENCE=memory)
 uv run fastapi dev app/main.py      # http://localhost:8000/docs
 uv run langgraph dev
+
+# Persistência no Postgres/Supabase (session pooler, porta 5432): PERSISTENCE=postgres
+uv run alembic upgrade head
+uv run python -m app.graph.seed     # ontologia + priors → kg_version 1
 
 # Regerar dados derivados (opcional)
 uv run python -m app.enrichment.risco_municipio --contexto <pasta com registros_desastres.zip> \
@@ -93,6 +100,14 @@ uv run python -m app.enrichment.risco_municipio --contexto <pasta com registros_
 uv run python -m app.graph.seed_priors --input <pasta da base comum>
 uv export --format requirements-txt --no-hashes --no-dev > requirements.txt
 ```
+
+Rotas principais (CONTRATOS_API §6): `POST /api/v1/cases` → `case_id` + `case_token`;
+`GET /cases/{id}/events` (SSE, retoma com `Last-Event-ID`); `POST /cases/{id}/messages`,
+`PUT|DELETE /cases/{id}/facts/{key}` e `POST .../confirm` respondem 202 e o resultado chega pelo SSE;
+`GET /cases/{id}/recommendation`, `/explain-graph`, `/offers/{offer_id}` (com `coverage_cards`) e
+`POST /offers/{offer_id}/customize` (Personalizar cumulativo; 422 com `violations`). Com
+`ENABLE_DEV_ROUTES=true`, `POST /api/v1/dev/graph/rebuild` agrega os fatos confirmados numa nova
+versão rascunho do grafo e `POST /api/v1/dev/graph/publish/{v}` a publica para os próximos casos.
 
 O lote não usa LLM nem rede. Para a jornada conversacional, defina `ANTHROPIC_API_KEY`; os modelos
 vêm de `LLM_MODEL_MAIN` e `LLM_MODEL_FAST` (para demonstração barata, `claude-haiku-5-5` nos dois).
@@ -141,9 +156,12 @@ coordenadas da base são fictícios e nunca são usados; o território entra só
 | Atlas Digital de Desastres no Brasil (MIDR/Defesa Civil, S2iD) | Risco de vendaval, granizo e alagamento | Município | Reconhecimentos de SE/ECP 2003–2016 por tipologia → 0 baixo · 1–2 médio · ≥ 3 alto | Subnotificação; registra reconhecimentos, não todos os eventos | 28/10/2026 |
 | Dados de criminalidade por UF | Risco de roubo | UF | Mediana 2018–2023 de roubos por 100 mil hab. → tercis entre UFs | Nível UF, não município; confiança baixa | 28/10/2026 |
 
+| ViaCEP (`viacep.com.br`) | CEP informado pelo usuário → município (jornada web) | Logradouro | API REST sob demanda, cache em memória | Não usado no lote (CEP da base é fictício) | sob demanda |
+
 Os riscos regionais entram sempre como `estimado` (confiança 0,3) e não decidem elegibilidade.
-Recorte versionado em `data/risco_municipio.csv`; código de geração em
-`app/enrichment/risco_municipio.py`. **Licença: confirmar os termos de cada fonte no site.**
+Recorte versionado em `data/risco_municipio.csv` (4.213 municípios) e `data/risco_uf.csv`; código de
+geração em `app/enrichment/risco_municipio.py`. Município sem registro no Atlas fica sem risco
+climático (desconhecido), só com o roubo da UF. **Licença: confirmar os termos de cada fonte no site.**
 
 ## Métricas e resultados (base de desenvolvimento, 2.978 casos)
 
@@ -176,6 +194,8 @@ inelegíveis (imóvel em obra); planos: Prático 1.641, Total 1.125, Essencial 1
 - O risco de roubo é por UF; o de clima depende de reconhecimentos oficiais.
 - A lista de atividades do formulário oficial não é pública (L-10): `quote_prefill.atividade` fica
   `null`.
+- Sem banco configurado, a API guarda casos e o checkpointer em memória (uma instância): reiniciar
+  apaga os casos. Com `PERSISTENCE=postgres`, ficam no Supabase.
 
 ## Uso de IA
 
