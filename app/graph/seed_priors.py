@@ -70,7 +70,7 @@ def main() -> None:
     header = (
         "# Gerado por app/graph/seed_priors.py a partir da base de exploração — não editar à mão.\n"
         "# Peso: observado 1,0; derivado/estimado 0,3. α = 1 + verdadeiros, β = 1 + falsos.\n"
-        "# maquinas_equipamentos: sem bem cadastrado conta como 'não' com peso 0,3 (só estatística).\n"
+        "# maquinas_equipamentos: sem bem cadastrado = 'não' com peso 0,3 (só estatística).\n"
     )
     body = "\n".join(
         f'- {{ atividade: "{p["atividade"]}", caracteristica: {p["caracteristica"]}, '

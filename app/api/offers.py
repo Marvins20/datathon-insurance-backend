@@ -47,7 +47,13 @@ class OfferRepository:
         self, case_id: str, case_token: str, offers: list[Offer], facts: dict[str, Fact]
     ) -> None:
         """Grava as ofertas de `decide`; descarta personalizações anteriores do caso."""
-        self._cases[case_id] = CaseOffers(_hash(case_token), facts, {o.offer_id: o for o in offers})
+        self.save_hashed(case_id, _hash(case_token), offers, facts)
+
+    def save_hashed(
+        self, case_id: str, token_hash: str, offers: list[Offer], facts: dict[str, Fact]
+    ) -> None:
+        """Como `save`, para quem guarda só o hash do token (o caso nunca guarda o token)."""
+        self._cases[case_id] = CaseOffers(token_hash, facts, {o.offer_id: o for o in offers})
 
     def get(self, case_id: str, case_token: str | None) -> CaseOffers:
         case = self._cases.get(case_id)
