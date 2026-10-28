@@ -1,0 +1,13 @@
+# Riscos e as dimensões de proteção que afetam (ARQUITETURA §4.1).
+- id: incendio
+  label: "Incêndio"
+  afeta: [imovel, conteudo]
+- id: dano_eletrico
+  label: "Dano elétrico"
+  afeta: [conteudo]
+- id: deterioracao_mercadoria
+  label: "Deterioração de mercadoria"
+  afeta: [conteudo]
+- id: roubo
+  label: "Roubo"
+  afeta: [conteudo]

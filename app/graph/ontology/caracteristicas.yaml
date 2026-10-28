@@ -1,0 +1,18 @@
+# Características operacionais e os riscos a que expõem (CONTRATOS_API §9.6).
+- id: mercadoria_refrigerada
+  label: "Mercadoria refrigerada"
+  fact_key: mercadoria_refrigerada
+  expoe_a:
+    - { risco: deterioracao_mercadoria, peso: 0.9 }
+    - { risco: dano_eletrico, peso: 0.7 }
+- id: estoque_relevante
+  label: "Estoque relevante"
+  fact_key: estoque_relevante
+  expoe_a:
+    - { risco: roubo, peso: 0.6 }
+    - { risco: incendio, peso: 0.4 }
+- id: uso_de_forno
+  label: "Uso de forno ou chama"
+  fact_key: uso_de_forno
+  expoe_a:
+    - { risco: incendio, peso: 0.8 }
