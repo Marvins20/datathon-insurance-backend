@@ -21,6 +21,12 @@ def get_client() -> AsyncAnthropic:
     return AsyncAnthropic(api_key=get_settings().anthropic_api_key, timeout=60.0, max_retries=2)
 
 
+# A API exige que a conversa comece pelo usuário e que a mensagem de sistema do meio venha logo
+# depois de uma mensagem do usuário. Turnos sem fala nova (edição de card) usam este marcador.
+CONVERSATION_START = "<evento>início da conversa</evento>"
+PROFILE_UPDATED = "<evento>o usuário atualizou o perfil pelos cards</evento>"
+
+
 def to_api_messages(history: list[BaseMessage], context: str | None = None) -> list[dict]:
     """Histórico do grafo → mensagens da API. Texto do usuário vai delimitado (é dado, não ordem);
     o estado volátil do caso entra no fim como mensagem de sistema para não quebrar o cache."""
@@ -31,6 +37,12 @@ def to_api_messages(history: list[BaseMessage], context: str | None = None) -> l
             messages.append({"role": "user", "content": content})
         elif msg.type == "ai":
             messages.append({"role": "assistant", "content": msg.content})
+    if messages and messages[0]["role"] == "assistant":
+        messages.insert(0, {"role": "user", "content": CONVERSATION_START})
+    if not messages or messages[-1]["role"] != "user":
+        messages.append(
+            {"role": "user", "content": PROFILE_UPDATED if messages else CONVERSATION_START}
+        )
     if context:
         messages.append({"role": "system", "content": context})
     return messages

@@ -7,6 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
+from app.agents.profiling.checkpoint import serializer
 from app.agents.profiling.graph import build_graph
 from app.agents.profiling.nodes.common import set_snapshot
 from app.api import cases, dev, offers
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
     from app.db.session import get_sessionmaker
 
     conninfo = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
-    async with AsyncPostgresSaver.from_conn_string(conninfo) as saver:
+    async with AsyncPostgresSaver.from_conn_string(conninfo, serde=serializer()) as saver:
         await saver.setup()
         sessions = get_sessionmaker()
         app.state.sessions = sessions
@@ -71,7 +72,7 @@ def create_app() -> FastAPI:
     state.learning = {}  # case_id → {característica: LearningEvent} (só confirmados)
     state.kg_drafts = {}  # versões rascunho em memória
     # Em memória por padrão; o lifespan troca por AsyncPostgresSaver com PERSISTENCE=postgres.
-    state.profile_graph = build_graph().compile(checkpointer=InMemorySaver())
+    state.profile_graph = build_graph().compile(checkpointer=InMemorySaver(serde=serializer()))
     state.runner = cases.build_runner(app)
     state.limiter = cases.limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
