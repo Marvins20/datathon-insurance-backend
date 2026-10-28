@@ -18,3 +18,12 @@ uv run ruff check . && uv run ruff format .
 uv run langgraph dev                # LangGraph Studio
 uv export --format requirements-txt --no-hashes --no-dev > requirements.txt
 ```
+
+## Dados externos (desastres e crimes)
+
+```bash
+uv run python -m app.etl.externo --data-dir ../xenga-datathon-context --check    # alvo e modo de acesso
+uv run python -m app.etl.externo --data-dir ../xenga-datathon-context            # carga idempotente (UPSERT)
+```
+
+Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de contexto).
