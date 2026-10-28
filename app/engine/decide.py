@@ -7,7 +7,7 @@ from app.domain.facts import Fact
 from app.engine.cards import build_cards
 from app.engine.catalog import Catalog
 from app.engine.eligibility import assess_eligibility
-from app.engine.estimates import Input, basic_midpoint, build_inputs
+from app.engine.estimates import Input, basic_minimum, build_inputs
 from app.engine.explain_template import (
     confirmation_questions,
     describe,
@@ -28,12 +28,16 @@ def derive_facts(facts: dict[str, Fact], catalog: Catalog) -> dict[str, Any]:
     O fato do caso, se existir, prevalece."""
     known = build_inputs(facts, [], include_estimated=False)
     derived: dict[str, Any] = {}
-    # ELG-008: IS básica pelas faixas declaradas.
-    if "is_basica_estimada" not in facts and (basic := basic_midpoint(known, catalog)) is not None:
+    # ELG-008: IS básica mínima pelas faixas declaradas.
+    if "is_basica_estimada" not in facts and (basic := basic_minimum(known, catalog)) is not None:
         derived["is_basica_estimada"] = basic
-    # ELG-007 (L-03): atividade aceita = CNAE fora da seção A.
-    if "atividade_aceita" not in facts and "cnae_principal" in known:
-        derived["atividade_aceita"] = known["cnae_principal"].value[:2] not in AGRO_DIVISIONS
+    # ELG-007 (L-03) e ELG-001: atividade aceita e não rural = CNAE fora da seção A.
+    if "cnae_principal" in known:
+        agro = known["cnae_principal"].value[:2] in AGRO_DIVISIONS
+        if "atividade_aceita" not in facts:
+            derived["atividade_aceita"] = not agro
+        if "atividade_rural" not in facts:
+            derived["atividade_rural"] = agro
     return derived
 
 

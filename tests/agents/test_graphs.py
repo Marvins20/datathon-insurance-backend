@@ -58,4 +58,3 @@ async def test_ineligible_case_gets_no_question(fake_llm) -> None:
     assert result["question"] is None
     assert result["questions_asked"] == 0
     assert "inelegível" in interviewer_context(result)
-

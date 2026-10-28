@@ -46,7 +46,7 @@ def test_basic_sums_what_is_protected(catalog, graph) -> None:
     assert (basic.insured_amount.min, basic.insured_amount.max) == (250_000, 1_200_000)
     assert basic.confidence == 0.8  # três entradas observadas
     assert basic.to_confirm == []
-    assert d.derived == {"is_basica_estimada": 725_000}
+    assert d.derived["is_basica_estimada"] == 250_000  # soma dos pisos
 
 
 def test_basic_respects_floor(catalog, graph) -> None:

@@ -1,0 +1,11 @@
+municipio_ibge,uf,risco_vendaval_regiao,risco_granizo_regiao,risco_alagamento_regiao,risco_roubo_regiao,registros_vendaval_2003_2016,registros_granizo_2003_2016,registros_alagamento_2003_2016
+2304400,CE,baixo,baixo,baixo,medio,0,0,0
+2611606,PE,baixo,baixo,baixo,medio,0,0,0
+2927408,BA,baixo,baixo,alto,medio,0,0,4
+3106200,MG,baixo,baixo,alto,baixo,0,0,3
+3304557,RJ,baixo,baixo,baixo,medio,0,0,0
+3550308,SP,baixo,baixo,medio,medio,0,0,1
+4106902,PR,baixo,baixo,baixo,baixo,0,0,0
+4314902,RS,baixo,baixo,medio,medio,0,0,1
+5208707,GO,baixo,baixo,baixo,baixo,0,0,0
+5300108,DF,baixo,baixo,baixo,alto,0,0,0

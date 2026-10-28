@@ -139,10 +139,10 @@ def estimate(code: str, inputs: dict[str, Input], catalog: Catalog) -> Estimate 
     )
 
 
-def basic_midpoint(inputs: dict[str, Input], catalog: Catalog) -> int | None:
-    """IS básica estimada (ponto médio, sem teto) para a ELG-008. Só com entradas sabidas:
-    sem prédio/conteúdo informados não há derivação — o caso não é redirecionado por suposição."""
+def basic_minimum(inputs: dict[str, Input], catalog: Catalog) -> int | None:
+    """IS básica mínima (soma dos pisos das faixas, sem teto) para a ELG-008. Só com entradas
+    sabidas e pelo piso: o caso só é redirecionado quando nem o mínimo cabe no limite."""
     est = catalog.estimates
     rule = next(r for r in est.rules.values() if r.tipo == "basica")
     result = _basic(rule, inputs, est.money_ranges, strict=True)
-    return None if result is None else (result[0] + result[1]) // 2
+    return None if result is None else result[0]

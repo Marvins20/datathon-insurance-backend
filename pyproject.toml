@@ -30,6 +30,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "langgraph-cli[inmem]>=0.3",
+    "xlrd>=2.0.2",
+    "openpyxl>=3.1.5",
 ]
 
 [tool.uv]
