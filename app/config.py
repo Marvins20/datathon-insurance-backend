@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -14,21 +14,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres"
     supabase_url: str = ""
-    supabase_jwt_secret: str = ""
     supabase_service_role_key: str = ""
 
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000"]
     )
-
-    whatsapp_provider: Literal["simulator", "meta", "twilio"] = "simulator"
-    meta_wa_token: str = ""
-    meta_wa_phone_number_id: str = ""
-    meta_wa_verify_token: str = ""
-    meta_app_secret: str = ""
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_wa_from: str = ""
 
     kg_version: str = "latest"
     demo_mode: bool = False

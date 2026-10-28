@@ -28,7 +28,6 @@ class FactSource(StrEnum):
     API_DESASTRES = "api_desastres"
     API_SEGURANCA = "api_seguranca"
     GRAFO = "grafo"
-    ATENDENTE = "atendente"
 
 
 class Fact(BaseModel):

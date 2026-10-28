@@ -2,8 +2,6 @@ from datetime import UTC, datetime
 
 from app.agents.profiling.graph import ExtractedFact, Extraction, interviewer_context
 from app.agents.profiling.graph import graph as profiling
-from app.agents.support.graph import Triage
-from app.agents.support.graph import graph as support
 from app.domain.facts import Fact, FactSource, FactStatus
 
 
@@ -61,15 +59,3 @@ async def test_ineligible_case_gets_no_question(fake_llm) -> None:
     assert result["questions_asked"] == 0
     assert "inelegível" in interviewer_context(result)
 
-
-async def test_support_routes_by_intent(fake_llm) -> None:
-    fake_llm.parsed[Triage] = Triage(intent="sinistro")
-    result = await support.ainvoke({"conversation_id": "w1", "messages": [("user", "fui roubado")]})
-    assert result["intent"] == "sinistro"
-    assert result["messages"][-1].type == "ai"
-
-
-async def test_support_refusal_goes_to_human(fake_llm) -> None:
-    result = await support.ainvoke({"conversation_id": "w1", "messages": [("user", "...")]})
-    assert result["intent"] == "humano"
-    assert result["messages"][-1].type == "human"  # handoff não responde
