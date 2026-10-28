@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "profiling": "./app/agents/profiling/graph.py:graph",
+    "support": "./app/agents/support/graph.py:graph"
+  },
+  "env": ".env"
+}

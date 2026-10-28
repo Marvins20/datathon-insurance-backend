@@ -15,5 +15,6 @@ uv run fastapi dev app/main.py      # http://localhost:8000/docs
 ```bash
 uv run pytest
 uv run ruff check . && uv run ruff format .
+uv run langgraph dev                # LangGraph Studio
 uv export --format requirements-txt --no-hashes --no-dev > requirements.txt
 ```
