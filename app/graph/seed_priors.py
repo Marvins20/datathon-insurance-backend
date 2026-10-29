@@ -21,7 +21,7 @@ from app.graph.store import ONTOLOGY_DIR
 
 # Características que a base só registra quando existem (bem cadastrado). Para a estatística, e só
 # para ela, a ausência conta como "não" com peso fraco; nas decisões, ausência segue DESCONHECIDO.
-ONE_SIDED = {"maquinas_equipamentos": 0.3}
+ONE_SIDED = {"maquinas_equipamentos": 0.3, "eletronicos_relevantes": 0.3, "letreiro_luminoso": 0.3}
 WEIGHTS = {
     FactStatus.CONFIRMADO: 1.0,
     FactStatus.OBSERVADO: 1.0,
@@ -61,23 +61,28 @@ def compute(base: Path) -> list[dict]:
     ]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument("--out", type=Path, default=ONTOLOGY_DIR / "priors_base.yaml")
-    args = parser.parse_args()
-    priors = compute(args.input)
+def write_priors(priors: list[dict], out: Path) -> None:
     header = (
         "# Gerado por app/graph/seed_priors.py a partir da base de exploração — não editar à mão.\n"
         "# Peso: observado 1,0; derivado/estimado 0,3. α = 1 + verdadeiros, β = 1 + falsos.\n"
-        "# maquinas_equipamentos: sem bem cadastrado = 'não' com peso 0,3 (só estatística).\n"
+        "# Bens só registrados quando existem (máquinas, eletrônicos, letreiro): ausência = 'não'\n"
+        "# com peso 0,3, só para a estatística.\n"
     )
     body = "\n".join(
         f'- {{ atividade: "{p["atividade"]}", caracteristica: {p["caracteristica"]}, '
         f"alpha: {p['alpha']}, beta: {p['beta']} }}"
         for p in priors
     )
-    args.out.write_text(header + body + "\n", encoding="utf-8")
+    out.write_text(header + body + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--out", type=Path, default=ONTOLOGY_DIR / "priors_base.yaml")
+    args = parser.parse_args()
+    priors = compute(args.input)
+    write_priors(priors, args.out)
     print(f"{len(priors)} priors → {args.out}")
 
 

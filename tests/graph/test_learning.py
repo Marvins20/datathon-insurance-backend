@@ -28,5 +28,7 @@ def test_confirmed_events_update_alpha_beta_in_new_version() -> None:
 
 
 def test_unknown_characteristic_is_ignored() -> None:
-    _, changed = apply_learning(load_snapshot(), [LearningEvent("1091-1/02", "delivery", True)], 2)
+    _, changed = apply_learning(
+        load_snapshot(), [LearningEvent("1091-1/02", "faturamento_faixa", True)], 2
+    )
     assert changed == []

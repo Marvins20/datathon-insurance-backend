@@ -97,7 +97,8 @@ uv run python -m app.graph.seed     # ontologia + priors → kg_version 1
 # Regerar dados derivados (opcional)
 uv run python -m app.enrichment.risco_municipio --contexto <pasta com registros_desastres.zip> \
   --base <pasta da base comum>
-uv run python -m app.graph.seed_priors --input <pasta da base comum>
+uv run python -m app.batch.validate_base --input data/Seguro_Empresarial_Desenvolvimento   # formato
+uv run python -m app.graph.train --input data/Seguro_Empresarial_Desenvolvimento          # treino do grafo
 uv export --format requirements-txt --no-hashes --no-dev > requirements.txt
 ```
 
@@ -149,6 +150,22 @@ recalculáveis (estoque, despesa, bens ponderados) → `derivado`; probabilidade
 `estimado`. Limiares (ex.: probabilidade ≥ 0,6 vira hipótese "sim") estão no YAML. CEP e
 coordenadas da base são fictícios e nunca são usados; o território entra só pelo código IBGE.
 
+## Treino do context graph
+
+`app/graph/train.py` valida o formato da base (`app/batch/validate_base.py`: arquivos, colunas,
+chaves, integridade entre tabelas, domínios e faixas), calcula α/β de atividade → característica por
+subclasse CNAE e por divisão (observado 1,0; derivado/estimado 0,3), grava
+`app/graph/ontology/priors_base.yaml` (usado pelo lote) e publica uma nova `kg_version` no banco sem
+sobrescrever as anteriores. Na base de desenvolvimento: 11 características, 396 priors, 8 divisões
+CNAE; a versão 2 (treino) tem 423 arestas.
+
+A validação mostrou limiares do mapeamento que não informavam nada e foram recalibrados na
+distribuição real (`app/batch/input_mapping.yaml`): delivery observado só com receita de delivery
+≥ 15% (5% marcava 25% dos escritórios); vendas online ≥ 60% = sim, ≤ 20% = não (a mediana é 0,47 em
+todas as atividades); recebimentos digitais ≥ 50% = sim, ≤ 10% = não. Entre o "sim" e o "não" o fato
+fica desconhecido. Bens só registrados quando existem (máquinas, eletrônicos, letreiro) contam a
+ausência como "não" com peso 0,3 apenas na estatística dos priors.
+
 ## Dados externos
 
 | Fonte | Uso | Nível | Método e transformação | Limitações | Acesso |
@@ -183,15 +200,16 @@ Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de co
 | Casos elegíveis com as 6 fixas no template | 100% |
 | Inconsistências plano × coberturas | 0 |
 | Coberturas sem faixa | 0% |
-| Perguntas de confirmação por caso (média) | 7,4 |
-| Casos com confiança geral < 0,5 | 53,5% |
+| Perguntas de confirmação por caso (média) | 7,8 |
+| Casos com confiança geral < 0,5 | 59,0% |
 | Estabilidade (perturbar atributo irrelevante) | 100% |
-| Consistência entre casos semelhantes | 65,7% |
+| Consistência entre casos semelhantes | 64,6% |
 | Sensibilidade da básica (conteúdo sobe uma faixa) | +265% no ponto médio |
 | Reprodutibilidade | mesmo hash em execuções repetidas |
 
 Distribuição: 2.900 elegíveis sujeitos a confirmação (três impedimentos não existem na base) e 78
-inelegíveis (imóvel em obra); planos: Prático 1.641, Total 1.125, Essencial 134.
+inelegíveis (imóvel em obra); planos: Prático 1.609, Total 1.125, Essencial 166. Resultados com o
+grafo treinado (kg_version 2).
 
 ## Limitações
 

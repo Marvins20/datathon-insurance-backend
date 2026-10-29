@@ -27,3 +27,6 @@ out/
 .DS_Store
 .idea/
 .vscode/
+
+# Base do desafio (dado da organização): não versionar
+data/Seguro_Empresarial_*/

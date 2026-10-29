@@ -230,22 +230,17 @@ def case_facts(
             confidence=1 - p_delivery,
         )
     online = empresa["percentual_vendas_online_estimado"]
-    b.add(
-        "vende_online",
-        online >= lim["vendas_online_min"],
-        OBS,
-        f"vendas online {online:.0%}",
-        confidence=0.7,
-    )
+    if online >= lim["vendas_online_min"]:
+        b.add("vende_online", True, OBS, f"vendas online {online:.0%}", confidence=0.7)
+    elif online <= lim["vendas_online_max_nao"]:
+        b.add("vende_online", False, OBS, f"vendas online {online:.0%}", confidence=0.7)
 
     # --- digital --------------------------------------------------------------------------
     digital = sinais["percentual_recebimentos_digitais"]
-    b.add(
-        "recebe_pagamentos_online",
-        digital >= lim["recebimentos_digitais_min"],
-        OBS,
-        f"recebimentos digitais {digital:.0%}",
-    )
+    if digital >= lim["recebimentos_digitais_min"]:
+        b.add("recebe_pagamentos_online", True, OBS, f"recebimentos digitais {digital:.0%}")
+    elif digital <= lim["recebimentos_digitais_max_nao"]:
+        b.add("recebe_pagamentos_online", False, OBS, f"recebimentos digitais {digital:.0%}")
     p_data = sinais["probabilidade_tratamento_dados"]
     if p_data >= lim["probabilidade_sim"]:
         b.add(

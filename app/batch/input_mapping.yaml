@@ -9,9 +9,13 @@ confianca_rotulo: { ALTA: 0.9, MEDIA: 0.6, BAIXA: 0.3 }
 confianca_natureza: { observado: 0.8, derivado: 0.7, estimado: 0.4 }
 
 limiares:
-  delivery_receita_min: 0.05         # percentual_receita_delivery_est
-  vendas_online_min: 0.05            # percentual_vendas_online_estimado
-  recebimentos_digitais_min: 0.3     # percentual_recebimentos_digitais
+  # Limiares calibrados na distribuição da base de desenvolvimento (validate_base + treino):
+  # entre o "sim" e o "não" o fato fica ausente (desconhecido), nunca vira "não".
+  delivery_receita_min: 0.15         # percentual_receita_delivery_est (5% marcava 25% dos escritórios)
+  vendas_online_min: 0.6             # percentual_vendas_online_estimado (mediana 0,47 em todas as atividades)
+  vendas_online_max_nao: 0.2
+  recebimentos_digitais_min: 0.5     # percentual_recebimentos_digitais
+  recebimentos_digitais_max_nao: 0.1
   sistema_critico_dependencia_min: 70  # dependencia_digital_pct
   sistema_critico_dependencia_max_nao: 30
   probabilidade_sim: 0.6             # probabilidades da base → hipótese verdadeira

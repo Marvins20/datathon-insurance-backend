@@ -10,6 +10,8 @@ from app.graph.learning import LearningEvent, apply_learning
 from app.graph.store import GraphSnapshot, snapshot_from_rows, snapshot_to_rows
 
 SEED_VERSION = 1
+# Versões que servem de base para a retroalimentação (as do rebuild são derivadas delas).
+BASE_NOTES = ("seed", "treino")
 
 
 async def _write(
@@ -29,6 +31,25 @@ async def seed(session: AsyncSession, snapshot: GraphSnapshot, now: datetime) ->
     await session.execute(delete(KgVersionRow).where(KgVersionRow.version == SEED_VERSION))
     seeded = GraphSnapshot(version=SEED_VERSION, graph=snapshot.graph)
     await _write(session, seeded, "publicada", "seed: ontologia + priors", now)
+
+
+async def publish_trained(
+    session: AsyncSession, snapshot: GraphSnapshot, note: str, now: datetime
+) -> int:
+    """Nova versão publicada com os priors treinados. Não sobrescreve versões anteriores: cada
+    decisão registra a kg_version que usou."""
+    version = (await session.scalar(select(func.max(KgVersionRow.version))) or 0) + 1
+    trained = GraphSnapshot(version=version, graph=snapshot.graph)
+    await _write(session, trained, "publicada", f"treino: {note}", now)
+    return version
+
+
+async def latest_base(session: AsyncSession) -> int:
+    """Versão de seed ou treino mais recente: base da retroalimentação."""
+    versions = (
+        await session.scalars(select(KgVersionRow).order_by(KgVersionRow.version.desc()))
+    ).all()
+    return next(v.version for v in versions if (v.note or "").startswith(BASE_NOTES))
 
 
 async def latest_published(session: AsyncSession) -> int | None:
@@ -59,8 +80,9 @@ async def load(session: AsyncSession, version: int) -> GraphSnapshot:
 
 
 async def rebuild(session: AsyncSession, now: datetime) -> tuple[int, list[dict]]:
-    """Seed + todos os learning_events → nova versão `rascunho` (sem dupla contagem)."""
-    base = await load(session, SEED_VERSION)
+    """Seed/treino mais recente + todos os learning_events → nova versão `rascunho`
+    (sempre a partir da base, sem dupla contagem)."""
+    base = await load(session, await latest_base(session))
     rows = (await session.scalars(select(LearningEventRow))).all()
     events = [LearningEvent(r.atividade, r.caracteristica, r.valor) for r in rows]
     version = (await session.scalar(select(func.max(KgVersionRow.version)))) + 1

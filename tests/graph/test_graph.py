@@ -42,4 +42,4 @@ def test_exposures_follow_risk_to_dimension(snapshot) -> None:
         ("dano_eletrico", 0.7, ["conteudo"]),
         ("deterioracao_mercadoria", 0.9, ["conteudo"]),
     ]
-    assert exposures(snapshot, "delivery") == []
+    assert exposures(snapshot, "faturamento_faixa") == []
