@@ -241,6 +241,10 @@ def case_facts(
         b.add("recebe_pagamentos_online", True, OBS, f"recebimentos digitais {digital:.0%}")
     elif digital <= lim["recebimentos_digitais_max_nao"]:
         b.add("recebe_pagamentos_online", False, OBS, f"recebimentos digitais {digital:.0%}")
+    exposure = sinais["indice_exposicao_digital"]
+    low, high = lim["exposicao_digital_cortes"]
+    level = "baixo" if exposure <= low else "medio" if exposure <= high else "alto"
+    b.add("exposicao_digital_nivel", level, DER, f"indice_exposicao_digital = {exposure}")
     p_data = sinais["probabilidade_tratamento_dados"]
     if p_data >= lim["probabilidade_sim"]:
         b.add(

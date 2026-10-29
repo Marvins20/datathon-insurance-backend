@@ -42,3 +42,14 @@ def test_coverage_without_estimate_rule_fails(tmp_path) -> None:
     )
     with pytest.raises(CatalogError, match="QUEBRA_VIDROS"):
         load_catalog(d)
+
+
+def test_invalid_source_rule_fails(tmp_path) -> None:
+    d = _broken_copy(
+        tmp_path,
+        "estimativas.yaml",
+        "fato: exposicao_digital_nivel, linhas:",
+        "fato: exposicao_digital_nivel, faixas:",
+    )
+    with pytest.raises(CatalogError, match="EST-CYB-01"):
+        load_catalog(d)

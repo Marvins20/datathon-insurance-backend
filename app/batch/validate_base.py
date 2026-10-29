@@ -56,6 +56,7 @@ REQUIRED = {
         "probabilidade_delivery_referencia",
         "percentual_recebimentos_digitais",
         "probabilidade_tratamento_dados",
+        "indice_exposicao_digital",
     ],
     "bens_cadastrados.csv": [
         "bem_id",

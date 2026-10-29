@@ -18,6 +18,9 @@ limiares:
   recebimentos_digitais_max_nao: 0.1
   sistema_critico_dependencia_min: 70  # dependencia_digital_pct
   sistema_critico_dependencia_max_nao: 30
+  # indice_exposicao_digital (índice recalculável da base → derivado) em tercis da base de
+  # desenvolvimento: ≤ 0,366 baixo · ≤ 0,472 médio · acima alto.
+  exposicao_digital_cortes: [0.366, 0.472]
   probabilidade_sim: 0.6             # probabilidades da base → hipótese verdadeira
   probabilidade_nao: 0.2             # → hipótese falsa
   eletronicos_relevantes_min: 50000  # soma ponderada de eletrônicos e informática

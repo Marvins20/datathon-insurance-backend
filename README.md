@@ -143,6 +143,11 @@ Premissas da equipe no motor:
   só protege o conteúdo) não contam nem viram pergunta.
 - **IS básica para ELG-008**: soma dos **pisos** das faixas sabidas — só redireciona quando nem o
   mínimo cabe em R$ 7,5 mi.
+- **Fontes em ordem** (tipo `fontes` em `estimativas.yaml`): a faixa cibernética usa primeiro o
+  índice de exposição digital da base (`indice_exposicao_digital`, índice recalculável → `derivado`,
+  em tercis: ≤ 0,366 baixo · ≤ 0,472 médio · acima alto) e, sem ele, os sinais da conversa; a de
+  quebra de vidros usa primeiro a fachada de vidro informada e, sem ela, o tipo de estabelecimento.
+  Isso dimensiona a faixa, mas não muda o plano: `PLN-02` continua exigindo fachada informada.
 - **Inquilino sem objeto do seguro** protege só o conteúdo; proprietário, prédio e conteúdo.
 - **Confiança geral**: média da confiança das coberturas da recomendação — mede o quanto a oferta
   é sustentada pelos dados. A pendência de elegibilidade não entra no número: já aparece no status
@@ -203,8 +208,8 @@ Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de co
 | Casos elegíveis com as 6 fixas no template | 100% |
 | Inconsistências plano × coberturas | 0 |
 | Coberturas sem faixa | 0% |
-| Perguntas de confirmação por caso (média) | 7,0 |
-| Confiança geral média / casos < 0,5 | 0,66 / 0% (100% na faixa média) |
+| Perguntas de confirmação por caso (média) | 4,7 |
+| Confiança geral média / casos < 0,5 | 0,70 / 0% (100% na faixa média) |
 | Estabilidade (perturbar atributo irrelevante) | 100% |
 | Consistência entre casos semelhantes | 64,6% |
 | Sensibilidade da básica (conteúdo sobe uma faixa) | +265% no ponto médio |
@@ -219,7 +224,9 @@ grafo treinado (kg_version 2).
 - Três impedimentos (localização restrita, imóvel tombado, objeto já segurado na BB) não existem na
   base: todo caso sem impedimento conhecido sai como elegível sujeito a confirmação.
 - Nenhum caso do lote chega a confiança "alta" (≥ 0,75): a base traz dados observados (0,8) e
-  derivados (0,7), nunca confirmados. A confiança sobe na jornada web, à medida que o cliente
+  derivados (0,7), nunca confirmados, e os valores agregados (bens, estoque, despesas) são
+  derivados por fórmula. Ponderar a média por valor segurado ou por grupo foi testado e não muda o
+  resultado (0,694–0,696). A confiança sobe na jornada web, à medida que o cliente
   confirma os cards.
 - Faixas monetárias de entrada são largas (ex.: R$ 200 mil a 1 milhão); por isso as faixas de saída
   também são, e a sensibilidade a uma mudança de faixa é alta.

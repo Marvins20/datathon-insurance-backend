@@ -9,6 +9,7 @@
 #   proporcional faixa da primeira base disponível × fator × multiplicador [min, max]
 #   tabela       faixa escolhida pelo valor de um fato
 #   contagem     faixa escolhida pelo número de fatos verdadeiros
+#   fontes       lista ordenada de tabelas/contagens; vale a primeira disponível no caso
 
 # Conversão das faixas de entrada (MoneyRange) em reais.
 faixas_monetarias:
@@ -72,12 +73,15 @@ regras:
 
   - id: EST-CYB-01
     cobertura: PROTECAO_CIBERNETICA
-    tipo: contagem
-    entradas: [armazena_dados_clientes, recebe_pagamentos_online, sistema_critico_online]
-    fatos: [armazena_dados_clientes, recebe_pagamentos_online, sistema_critico_online]
-    linhas: [[20000, 50000], [50000, 100000], [100000, 200000], [150000, 300000]]
+    tipo: fontes
+    entradas: [exposicao_digital_nivel, armazena_dados_clientes, recebe_pagamentos_online, sistema_critico_online]
+    fontes:
+      # 1º índice de exposição digital da base (derivado); 2º sinais informados na conversa.
+      - { fato: exposicao_digital_nivel, linhas: { baixo: [20000, 50000], medio: [50000, 100000], alto: [100000, 200000] } }
+      - fatos: [armazena_dados_clientes, recebe_pagamentos_online, sistema_critico_online]
+        linhas: [[20000, 50000], [50000, 100000], [100000, 200000], [150000, 300000]]
     padrao: [20000, 100000]
-    regra: "faixa por exposição digital (nº de sinais: dados de clientes, pagamento online, sistema crítico); controles não reduzem abaixo do mínimo (L-07, L-10)"
+    regra: "faixa pelo nível de exposição digital (índice da base em tercis) ou, sem ele, pelo nº de sinais (dados de clientes, pagamento online, sistema crítico); controles não reduzem abaixo do mínimo (L-07, L-10)"
 
   - id: EST-FRIG-01
     cobertura: DETERIORACAO_MERCADORIAS_FRIGORIFICADAS
@@ -109,12 +113,15 @@ regras:
 
   - id: EST-VIDRO-01
     cobertura: QUEBRA_VIDROS
-    tipo: tabela
-    entradas: [fachada_vidros]
-    fato: fachada_vidros
-    linhas: { true: [20000, 60000], false: [5000, 20000] }
+    tipo: fontes
+    entradas: [fachada_vidros, tipo_estabelecimento]
+    fontes:
+      # 1º fachada de vidro informada; 2º tipo de estabelecimento (lojas têm mais vidro exposto).
+      - { fato: fachada_vidros, linhas: { true: [20000, 60000], false: [5000, 20000] } }
+      - fato: tipo_estabelecimento
+        linhas: { loja: [10000, 40000], loja_shopping: [10000, 40000], escritorio: [5000, 20000], galpao_industria: [5000, 20000], home_office: [2000, 10000] }
     padrao: [10000, 30000]
-    regra: "fachada de vidro 20–60 mil; sem fachada de vidro 5–20 mil"
+    regra: "fachada de vidro 20–60 mil (sem fachada 5–20 mil); sem essa informação, pelo tipo de estabelecimento: loja 10–40 mil, escritório ou galpão 5–20 mil"
 
   - id: EST-RCE-01
     cobertura: RC_EMPREGADOR

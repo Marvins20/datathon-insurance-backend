@@ -87,7 +87,7 @@ class EstimateBase(BaseModel):
 class EstimateRule(BaseModel):
     id: str
     cobertura: str
-    tipo: Literal["basica", "proporcional", "tabela", "contagem"]
+    tipo: Literal["basica", "proporcional", "tabela", "contagem", "fontes"]
     entradas: list[str]
     regra: str
     padrao: list[int] | dict[str, str]
@@ -96,6 +96,9 @@ class EstimateRule(BaseModel):
     fato: str | None = None
     fatos: list[str] = []
     linhas: dict[Any, list[int]] | list[list[int]] | None = None
+    fontes: list[
+        dict
+    ] = []  # tipo fontes: [{fato, linhas: {valor: faixa}} | {fatos, linhas: [faixa]}]
 
 
 class Estimates(BaseModel):
@@ -229,6 +232,8 @@ def _validate_estimates(cat: Catalog) -> None:
         if code not in cat.coverages:
             raise CatalogError(f"{where}: cobertura inexistente {code}")
         keys = set(r.entradas) | {b.fato for b in r.base} | set(r.fatos)
+        for src in r.fontes:
+            keys |= {src["fato"]} if "fato" in src else set(src.get("fatos", []))
         keys |= {r.fato} if r.fato else set()
         keys |= set(r.padrao) if isinstance(r.padrao, dict) else set()
         for key in keys:
@@ -249,6 +254,17 @@ def _validate_estimates(cat: Catalog) -> None:
             raise CatalogError(f"{where}: tabela precisa de fato e linhas")
         if r.tipo == "contagem" and (not r.fatos or len(r.linhas or []) != len(r.fatos) + 1):
             raise CatalogError(f"{where}: contagem precisa de uma linha por total possível")
+        if r.tipo == "fontes":
+            if not r.fontes:
+                raise CatalogError(f"{where}: fontes vazias")
+            for src in r.fontes:
+                ok_table = "fato" in src and isinstance(src.get("linhas"), dict)
+                ok_count = "fatos" in src and len(src.get("linhas") or []) == len(src["fatos"]) + 1
+                if not (ok_table or ok_count):
+                    raise CatalogError(f"{where}: fonte inválida {src}")
+                rows = src["linhas"].values() if ok_table else src["linhas"]
+                for row in rows:
+                    _check_range(row, f"{where} fonte")
         rows = r.linhas.values() if isinstance(r.linhas, dict) else r.linhas or []
         for row in rows:
             _check_range(row, f"{where} linha")

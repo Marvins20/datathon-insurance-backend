@@ -128,6 +128,23 @@ def _compute(rule: EstimateRule, inputs: dict[str, Input], money, factors):
         lo, hi = rule.padrao
         return lo, hi, [], True, [Slot(rule.fato, table, True), *others]
 
+    if rule.tipo == "fontes":
+        # Fontes alternativas em ordem: a primeira disponível ocupa a vaga única da regra.
+        for src in rule.fontes:
+            if "fato" in src:
+                item = inputs.get(src["fato"])
+                if item is not None and item.value in src["linhas"]:
+                    lo, hi = src["linhas"][item.value]
+                    return lo, hi, [], False, [_slot(src["fato"], inputs, factors)]
+            else:
+                present = [k for k in src["fatos"] if k in inputs]
+                if present:
+                    lo, hi = src["linhas"][sum(inputs[k].value is True for k in present)]
+                    return lo, hi, [], False, [_slot(k, inputs, factors) for k in src["fatos"]]
+        lo, hi = rule.padrao
+        first = rule.fontes[0]
+        return lo, hi, [], True, [Slot(first.get("fato") or first["fatos"][0], table, True)]
+
     # contagem: cada sinal é uma vaga; sem nenhum, a tabela da equipe preenche todas (estimado).
     present = [k for k in rule.fatos if k in inputs]
     if present:

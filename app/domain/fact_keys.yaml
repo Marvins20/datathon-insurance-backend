@@ -85,6 +85,7 @@ digital:
   armazena_dados_clientes: { label: "Armazena dados de clientes", type: boolean }
   recebe_pagamentos_online: { label: "Recebe pagamentos online", type: boolean }
   sistema_critico_online: { label: "Sistema crítico online", type: boolean }
+  exposicao_digital_nivel: { label: "Exposição digital", type: level, extractable: false }
   controles_digitais:
     label: "Controles digitais"
     type: multiselect

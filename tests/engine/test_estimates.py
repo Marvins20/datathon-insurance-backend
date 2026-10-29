@@ -168,3 +168,47 @@ def test_pending_eligibility_does_not_lower_confidence(catalog, graph) -> None:
     pending = decide(make_facts(**partial, **values), catalog, graph)
     assert pending.eligibility.status == "pendente"
     assert pending.confidence.overall == complete.confidence.overall
+
+
+# --- fontes alternativas em ordem (EST-CYB-01, EST-VIDRO-01) ----------------------------------
+
+
+def test_cyber_uses_exposure_index_first(catalog, graph) -> None:
+    d = run(
+        catalog,
+        graph,
+        FactStatus.DERIVADO,
+        exposicao_digital_nivel="alto",
+        armazena_dados_clientes=False,
+    )
+    cyb = coverage(d, "PROTECAO_CIBERNETICA")
+    assert (cyb.insured_amount.min, cyb.insured_amount.max) == (100_000, 200_000)
+    assert cyb.confidence == 0.7  # uma vaga: o índice (derivado)
+    assert cyb.data_used == ["exposicao_digital_nivel (derivado, base_comum)"]
+
+
+def test_glass_falls_back_to_establishment_type(catalog, graph) -> None:
+    facts = {"fachada_vidros": True}  # leva ao Total (PLN-02)
+    with_facade = run(catalog, graph, **facts)
+    glass = coverage(with_facade, "QUEBRA_VIDROS")
+    assert (glass.insured_amount.min, glass.insured_amount.max) == (20_000, 60_000)
+
+    d = run(
+        catalog,
+        graph,
+        FactStatus.DERIVADO,
+        num_empregados_faixa="10_49",
+        tipo_estabelecimento="loja",
+    )
+    glass = coverage(d, "QUEBRA_VIDROS")
+    assert (glass.insured_amount.min, glass.insured_amount.max) == (10_000, 40_000)
+    assert glass.confidence == 0.7
+    assert "Confirmar: fachada de vidro?" not in glass.to_confirm
+
+
+def test_without_any_source_uses_team_table(catalog, graph) -> None:
+    d = run(catalog, graph, num_empregados_faixa="10_49")
+    glass = coverage(d, "QUEBRA_VIDROS")
+    assert (glass.insured_amount.min, glass.insured_amount.max) == (10_000, 30_000)
+    assert glass.confidence == 0.4
+    assert "Confirmar: fachada de vidro?" in glass.to_confirm
