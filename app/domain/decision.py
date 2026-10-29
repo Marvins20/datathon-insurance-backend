@@ -157,6 +157,9 @@ class Offer(BaseModel):
 class Confidence(BaseModel):
     overall: float
     level: Literal["alta", "media", "baixa"]
+    # Componentes: sustentação das faixas e da escolha do plano (overall = média dos dois).
+    ranges: float | None = None
+    plan: float | None = None
 
 
 class QuestionOption(BaseModel):

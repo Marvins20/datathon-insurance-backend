@@ -177,13 +177,15 @@ def case_facts(
         )
         b.add("objeto_seguro", "ambos", DER, "proprietário: imóvel e conteúdo", confidence=0.5)
         if area > 0:
-            m2 = cfg["custo_m2"][imovel["padrao_construtivo_cadastrado"]]
+            standard = imovel["padrao_construtivo_cadastrado"]
+            m2 = cfg["custo_m2"][standard]
+            # Custo por m² é premissa; sem padrão construtivo cadastrado, a premissa pesa mais.
             b.add(
                 "valor_predio_faixa",
                 money_range(area * m2),
                 DER,
-                f"área {int(area)} m² × R$ {m2}/m² ({imovel['padrao_construtivo_cadastrado']})",
-                confidence=0.5,
+                f"área {int(area)} m² × R$ {m2}/m² ({standard})",
+                confidence=0.4 if standard == "NAO_DISPONIVEL" else 0.6,
             )
 
     # --- impedimentos: só o que a base informa; o resto fica pendente (L-05) ---------------
@@ -298,45 +300,78 @@ def case_facts(
     )
 
     # --- bens vinculados ao estabelecimento (valor ponderado pela probabilidade do vínculo) ---
-    weighted = bens.groupby("tipo_bem")["valor_bem_ponderado_referencia"].sum().to_dict()
-    total_goods = sum(weighted.values())
-    equipment = sum(v for t, v in weighted.items() if t in cfg["bens_equipamento"])
+    # A confiança de cada valor calculado herda a qualidade do vínculo dos bens que o compõem
+    # (nivel_confianca_vinculo ALTA/MEDIA/BAIXA), ponderada pelo valor de cada bem.
+    def link_quality(rows: pd.DataFrame) -> float:
+        value = rows["valor_bem_ponderado_referencia"]
+        quality = rows["nivel_confianca_vinculo"].map(b.by_label)
+        return float((value * quality).sum() / value.sum()) if value.sum() > 0 else 0.0
+
+    def of_types(types_: list[str]) -> pd.DataFrame:
+        return bens[bens["tipo_bem"].isin(types_)]
+
+    goods_value = float(bens["valor_bem_ponderado_referencia"].sum())
+    equipment_rows = of_types(cfg["bens_equipamento"])
+    equipment = float(equipment_rows["valor_bem_ponderado_referencia"].sum())
     if equipment > 0:
         b.add(
             "valor_equipamentos_faixa",
             money_range(equipment),
             DER,
             "soma ponderada de bens de equipamento",
+            confidence=link_quality(equipment_rows),
         )
-    if total_goods + stock > 0:
+    if goods_value + stock > 0:
+        # Estoque médio entra com a qualidade de um valor derivado (0,7).
+        content_quality = (link_quality(bens) * goods_value + 0.7 * stock) / (goods_value + stock)
         b.add(
             "valor_conteudo_faixa",
-            money_range(total_goods + stock),
+            money_range(goods_value + stock),
             DER,
             "soma ponderada dos bens + estoque médio",
-            confidence=0.6,
+            confidence=content_quality,
         )
-    strong = bens[bens["nivel_confianca_vinculo"].isin(["ALTA", "MEDIA"])]
-    types = set(strong["tipo_bem"])
-    if types & set(cfg["bens_maquina"]):
-        b.add("maquinas_equipamentos", True, OBS, "bem de máquina/equipamento vinculado ao imóvel")
-    electronics = sum(v for t, v in weighted.items() if t in cfg["bens_eletronicos"])
+
+    def best_link(types_: list[str]) -> float | None:
+        """Melhor vínculo (ALTA/MEDIA) entre os bens do tipo; None se só houver vínculo BAIXA."""
+        rows = of_types(types_)
+        rows = rows[rows["nivel_confianca_vinculo"].isin(["ALTA", "MEDIA"])]
+        return None if rows.empty else max(b.by_label[v] for v in rows["nivel_confianca_vinculo"])
+
+    if (q := best_link(cfg["bens_maquina"])) is not None:
+        b.add(
+            "maquinas_equipamentos",
+            True,
+            OBS,
+            "bem de máquina/equipamento vinculado ao imóvel",
+            confidence=q,
+        )
+    electronics_rows = of_types(cfg["bens_eletronicos"])
+    electronics = float(electronics_rows["valor_bem_ponderado_referencia"].sum())
     if electronics >= lim["eletronicos_relevantes_min"]:
         b.add(
-            "eletronicos_relevantes", True, DER, f"eletrônicos e informática R$ {electronics:,.0f}"
+            "eletronicos_relevantes",
+            True,
+            DER,
+            f"eletrônicos e informática R$ {electronics:,.0f}",
+            confidence=link_quality(electronics_rows),
         )
-    if "LETREIRO" in types:
+    if (q := best_link(["LETREIRO"])) is not None:
         b.add(
             "letreiro_luminoso",
             True,
             OBS,
             "letreiro cadastrado e vinculado ao imóvel",
-            confidence=0.7,
+            confidence=q,
         )
     p_cold = sinais["probabilidade_refrigeracao_referencia"]
-    if "EQUIPAMENTO_REFRIGERACAO" in types:
+    if (q := best_link(["EQUIPAMENTO_REFRIGERACAO"])) is not None:
         b.add(
-            "mercadoria_refrigerada", True, OBS, "equipamento de refrigeração vinculado ao imóvel"
+            "mercadoria_refrigerada",
+            True,
+            OBS,
+            "equipamento de refrigeração vinculado ao imóvel",
+            confidence=q,
         )
     elif p_cold >= lim["probabilidade_sim"]:
         b.add(

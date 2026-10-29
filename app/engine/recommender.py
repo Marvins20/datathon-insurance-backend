@@ -6,8 +6,8 @@ from typing import Any
 from app.domain.decision import Hypothesis, Need, Offer, OfferCoverage, OfferKind, PlanCode
 from app.domain.fact_keys import get_fact_key
 from app.engine.catalog import PLAN_ORDER, Catalog, Coverage
-from app.engine.estimates import Input, estimate
-from app.engine.rules import Tri, evaluate
+from app.engine.estimates import Input, estimate, input_factor
+from app.engine.rules import COMBINATORS, Tri, evaluate
 
 # Premissa da equipe (análoga à L-01): específicas da atividade só existem no Prático/Total;
 # se alguma se aplica, o plano mínimo sobe para o Prático.
@@ -206,6 +206,70 @@ def recommend(
         wider_plan = PLAN_ORDER[idx + 1]
         offers.append(compose("of_3", "protecao_ampliada", wider_plan, [WIDER_RULE_ID], [], extras))
     return offers
+
+
+def _leaves(cond: dict) -> list[dict]:
+    if "fato" in cond:
+        return [cond]
+    (name,) = (k for k in cond if k in COMBINATORS)
+    return [leaf for c in cond[name] for leaf in _leaves(c)]
+
+
+def plan_confidence(offer: Offer, inputs: dict[str, Input], catalog: Catalog) -> float:
+    """Quão sustentada pelos dados está a escolha do plano (0–1).
+
+    - Plano acima do Essencial: a evidência mais forte entre as condições verdadeiras das regras
+      que levaram a este plano (um risco regional estimado sustenta pouco; um fato da base, mais).
+    - Essencial: cada regra de subida precisa estar descartada por fatos sabidos; vale o descarte
+      mais fraco (condição desconhecida = 0, ausência não é "não").
+    """
+    factors = catalog.estimates.status_factors
+    values = {k: i.value for k, i in inputs.items()}
+
+    def strength(key: str) -> float:
+        item = inputs.get(key)
+        return input_factor(item, factors) if item is not None else 0.0
+
+    if offer.plan_code != "ESSENCIAL":
+        best = 0.0
+        for rule in catalog.plan_rules:
+            if rule.id in offer.plan_rule_ids and rule.plano_minimo == offer.plan_code:
+                for leaf in _leaves(rule.se):
+                    if evaluate(leaf, values).value is Tri.VERDADEIRO:
+                        best = max(best, strength(leaf["fato"]))
+        if SPECIFIC_RULE_ID in offer.plan_rule_ids:
+            specific = [c for c in offer.coverages if c.group == "especifica_atividade"]
+            best = max([best, *(strength(k) for c in specific for k in c.fact_keys)])
+        return round(best, 2)
+
+    weakest = 1.0
+    for rule in catalog.plan_rules:
+        discarded = [
+            strength(leaf["fato"])
+            for leaf in _leaves(rule.se)
+            if evaluate(leaf, values).value is Tri.FALSO
+        ]
+        unknown = len(_leaves(rule.se)) - len(discarded)
+        weakest = min(weakest, 0.0 if unknown else min(discarded))
+    return round(weakest, 2)
+
+
+def plan_open_keys(offer: Offer, inputs: dict[str, Input], catalog: Catalog) -> list[str]:
+    """Fatos desconhecidos (e perguntáveis) que ainda podem subir o plano: viram perguntas de
+    confirmação. Ex.: Essencial sem saber se a fachada é de vidro (PLN-02 → Total)."""
+    values = {k: i.value for k, i in inputs.items()}
+    current = PLAN_ORDER.index(offer.plan_code)
+    keys = set()
+    for rule in catalog.plan_rules:
+        if PLAN_ORDER.index(rule.plano_minimo) > current:
+            for leaf in _leaves(rule.se):
+                key = leaf["fato"]
+                if (
+                    evaluate(leaf, values).value is Tri.DESCONHECIDO
+                    and get_fact_key(key).extractable
+                ):
+                    keys.add(key)
+    return sorted(keys)
 
 
 def validate_offer(offer: Offer, catalog: Catalog) -> None:

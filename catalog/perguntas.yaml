@@ -96,6 +96,9 @@ perguntas:
   fachada_vidros:
     texto: "A fachada ou vitrine é de vidro?"
     motivo: "Vitrines tornam relevante a cobertura de quebra de vidros."
+  num_empregados_faixa:
+    texto: "Quantas pessoas trabalham no negócio, contando você?"
+    motivo: "Com equipe maior, a responsabilidade civil do empregador passa a ser relevante."
   atendimento_presencial:
     texto: "Vocês atendem clientes no local?"
     motivo: "Circulação de público aumenta a responsabilidade civil."

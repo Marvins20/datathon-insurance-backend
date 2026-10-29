@@ -149,9 +149,14 @@ Premissas da equipe no motor:
   quebra de vidros usa primeiro a fachada de vidro informada e, sem ela, o tipo de estabelecimento.
   Isso dimensiona a faixa, mas não muda o plano: `PLN-02` continua exigindo fachada informada.
 - **Inquilino sem objeto do seguro** protege só o conteúdo; proprietário, prédio e conteúdo.
-- **Confiança geral**: média da confiança das coberturas da recomendação — mede o quanto a oferta
-  é sustentada pelos dados. A pendência de elegibilidade não entra no número: já aparece no status
-  (`preliminar`, `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas de confirmação.
+- **Confiança geral** = média de dois componentes (ambos no `trace`): **faixas** (média da confiança
+  das coberturas) e **plano** (quão sustentada está a escolha do plano: a evidência mais forte que o
+  fez subir — um risco regional estimado sustenta pouco — ou, no Essencial, o descarte mais fraco
+  das regras de subida; condição desconhecida vale 0). Cada entrada vale
+  min(fator da natureza, confiança do dado): a natureza é o teto e a qualidade declarada na base
+  (ex.: vínculo BAIXA dos bens) pode baixar. Fatos que ainda podem subir o plano viram perguntas de
+  confirmação. A pendência de elegibilidade não entra no número: já aparece no status
+  (`preliminar`, `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas.
 
 Mapeamento da base (`app/batch/input_mapping.yaml`): campos cadastrais → `observado`; valores
 recalculáveis (estoque, despesa, bens ponderados) → `derivado`; probabilidades e índices →
@@ -208,8 +213,9 @@ Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de co
 | Casos elegíveis com as 6 fixas no template | 100% |
 | Inconsistências plano × coberturas | 0 |
 | Coberturas sem faixa | 0% |
-| Perguntas de confirmação por caso (média) | 4,7 |
-| Confiança geral média / casos < 0,5 | 0,70 / 0% (100% na faixa média) |
+| Perguntas de confirmação por caso (média) | 5,4 |
+| Confiança geral: média / desvio / casos < 0,5 | 0,61 / 0,11 / 23,8% |
+| Confiança por plano (Total / Prático / Essencial) | 0,67 / 0,61 / 0,32 |
 | Estabilidade (perturbar atributo irrelevante) | 100% |
 | Consistência entre casos semelhantes | 64,6% |
 | Sensibilidade da básica (conteúdo sobe uma faixa) | +265% no ponto médio |
@@ -223,6 +229,10 @@ grafo treinado (kg_version 2).
 
 - Três impedimentos (localização restrita, imóvel tombado, objeto já segurado na BB) não existem na
   base: todo caso sem impedimento conhecido sai como elegível sujeito a confirmação.
+- Nenhum caso do Essencial tem a escolha do plano sustentada: a base nunca informa fachada de
+  vidro, então a regra que levaria ao Total não pode ser descartada (vira pergunta de confirmação).
+  532 casos sobem para o Prático só pelo risco regional estimado (nível UF) e ficam com confiança
+  de plano 0,3.
 - Nenhum caso do lote chega a confiança "alta" (≥ 0,75): a base traz dados observados (0,8) e
   derivados (0,7), nunca confirmados, e os valores agregados (bens, estoque, despesas) são
   derivados por fórmula. Ponderar a média por valor segurado ou por grupo foi testado e não muda o

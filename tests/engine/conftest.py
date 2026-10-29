@@ -20,6 +20,15 @@ NO_IMPEDIMENTS = {
 }
 
 
+NATURE_CONFIDENCE = {
+    FactStatus.CONFIRMADO: 1.0,
+    FactStatus.OBSERVADO: 0.8,
+    FactStatus.DERIVADO: 0.7,
+    FactStatus.ESTIMADO: 0.4,
+    FactStatus.REJEITADO: 1.0,
+}
+
+
 def make_facts(status: FactStatus = FactStatus.OBSERVADO, **values) -> dict[str, Fact]:
     source = FactSource.GRAFO if status is FactStatus.ESTIMADO else FactSource.BASE_COMUM
     return {
@@ -28,7 +37,7 @@ def make_facts(status: FactStatus = FactStatus.OBSERVADO, **values) -> dict[str,
             value=v,
             status=status,
             source=source,
-            confidence=0.8,
+            confidence=NATURE_CONFIDENCE[status],
             updated_at=T0,
             updated_by="teste",
         )

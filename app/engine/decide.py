@@ -16,7 +16,7 @@ from app.engine.explain_template import (
 )
 from app.engine.needs import assess_needs, graph_hypotheses
 from app.engine.prefill import quote_prefill
-from app.engine.recommender import recommend
+from app.engine.recommender import plan_confidence, plan_open_keys, recommend
 from app.graph.store import GraphSnapshot
 
 # CNAE seção A (agropecuária) = divisões 01 a 03.
@@ -92,8 +92,10 @@ def decide(facts: dict[str, Fact], catalog: Catalog, graph: GraphSnapshot) -> De
         hypotheses=hyps,
         needs=needs,
         offers=offers,
-        confidence=overall_confidence(best),
-        confirmation_questions=confirmation_questions(eligibility, best, catalog),
+        confidence=overall_confidence(best, plan_confidence(best, inputs, catalog)),
+        confirmation_questions=confirmation_questions(
+            eligibility, best, catalog, plan_open_keys(best, inputs, catalog)
+        ),
         external_sources=external_sources(facts),
         versions=versions,
     )

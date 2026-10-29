@@ -3,11 +3,12 @@
 Entradas por prioridade: confirmado > observado > derivado > estimado; sem entrada, a tabela da
 equipe (`padrao`, natureza estimado).
 
-Confiança = média dos fatores das *vagas* de entrada da regra (CONTRATOS_API §9.5: média
+Confiança = média dos valores das *vagas* de entrada da regra (CONTRATOS_API §9.5: média
 ponderada do fator × cobertura das entradas necessárias). Uma vaga é uma entrada necessária ao
 caso: alternativas ("prédio **ou** conteúdo") ocupam uma vaga só, e entradas que não se aplicam
 (o prédio de quem só protege o conteúdo) não contam. Vaga vazia vale 0; vaga preenchida pela
-tabela da equipe vale o fator de `estimado`.
+tabela da equipe vale o fator de `estimado`; vaga preenchida por um dado vale
+min(fator da natureza, confiança do dado) — a natureza é o teto, a qualidade pode baixar.
 """
 
 from dataclasses import dataclass
@@ -27,6 +28,13 @@ class Input:
     value: Any
     status: str
     source: str
+    confidence: float = 1.0  # qualidade do próprio dado (rótulo da base, vínculo, p da hipótese)
+
+
+def input_factor(item: Input, factors: dict[str, float]) -> float:
+    """Valor de uma entrada: a natureza é o teto, a qualidade do dado pode baixar.
+    Ex.: observado (teto 0,8) com rótulo MEDIA na base (0,6) → 0,6."""
+    return min(factors[item.status], item.confidence)
 
 
 @dataclass(frozen=True)
@@ -51,9 +59,12 @@ def build_inputs(
     facts: dict[str, Fact], hyps: list[Hypothesis], *, include_estimated: bool
 ) -> dict[str, Input]:
     usable = usable_values(facts, include_estimated=include_estimated)
-    inputs = {k: Input(v, facts[k].status.value, facts[k].source.value) for k, v in usable.items()}
+    inputs = {
+        k: Input(v, facts[k].status.value, facts[k].source.value, facts[k].confidence)
+        for k, v in usable.items()
+    }
     for h in hyps:
-        inputs.setdefault(h.fact_key, Input(h.value, "estimado", "grafo"))
+        inputs.setdefault(h.fact_key, Input(h.value, "estimado", "grafo", h.p))
     return inputs
 
 
@@ -64,13 +75,13 @@ def _basic(rule: EstimateRule, inputs: dict[str, Input], money, factors, strict:
     if "objeto_seguro" in inputs:
         item = inputs["objeto_seguro"]
         parts = BASIC_PARTS[item.value]
-        slots = [Slot("objeto_seguro", factors[item.status], item.status == "estimado")]
+        slots = [Slot("objeto_seguro", input_factor(item, factors), item.status == "estimado")]
     elif "relacao_imovel" in inputs:
         # Premissa: inquilino protege só o conteúdo; proprietário, prédio e conteúdo.
         item = inputs["relacao_imovel"]
         parts = ["conteudo"] if item.value == "inquilino" else ["predio", "conteudo"]
         used.append("relacao_imovel")
-        slots = [Slot("objeto_seguro", factors[item.status], True)]  # inferido: confirmar
+        slots = [Slot("objeto_seguro", input_factor(item, factors), True)]  # inferido: confirmar
     elif strict:
         return None
     else:
@@ -82,7 +93,8 @@ def _basic(rule: EstimateRule, inputs: dict[str, Input], money, factors, strict:
         key = f"valor_{part}_faixa"
         if key in inputs:
             rng = money[inputs[key].value]
-            slots.append(Slot(key, factors[inputs[key].status], inputs[key].status == "estimado"))
+            item = inputs[key]
+            slots.append(Slot(key, input_factor(item, factors), item.status == "estimado"))
         elif strict:
             return None
         else:
@@ -97,7 +109,7 @@ def _slot(key: str, inputs: dict[str, Input], factors) -> Slot:
     item = inputs.get(key)
     if item is None:
         return Slot(key, 0.0, True)
-    return Slot(key, factors[item.status], item.status == "estimado")
+    return Slot(key, input_factor(item, factors), item.status == "estimado")
 
 
 def _compute(rule: EstimateRule, inputs: dict[str, Input], money, factors):

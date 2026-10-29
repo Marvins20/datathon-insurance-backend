@@ -8,6 +8,7 @@ from app.domain.decision import (
     Offer,
     Reason,
 )
+from app.domain.fact_keys import get_fact_key
 from app.domain.facts import Fact
 from app.engine.catalog import Catalog
 
@@ -89,23 +90,32 @@ def describe(offer: Offer, best: Offer) -> dict:
     }
 
 
-def overall_confidence(best: Offer) -> Confidence:
+def overall_confidence(best: Offer, plan: float) -> Confidence:
+    """Sustentação da oferta pelos dados: média entre a confiança das faixas e a da escolha do
+    plano. Pendência de elegibilidade não entra aqui: ela já aparece no status (`preliminar`,
+    `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas."""
     values = [c.confidence for c in best.coverages if c.confidence is not None]
-    # Só a sustentação da oferta pelos dados. Pendência de elegibilidade não entra aqui: ela já
-    # aparece no status (`preliminar`, `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas.
-    overall = round(sum(values) / len(values), 2) if values else 0.0
+    ranges = round(sum(values) / len(values), 2) if values else 0.0
+    overall = round((ranges + plan) / 2, 2)
     level = "alta" if overall >= 0.75 else "media" if overall >= 0.5 else "baixa"
-    return Confidence(overall=overall, level=level)
+    return Confidence(overall=overall, level=level, ranges=ranges, plan=plan)
 
 
 def confirmation_questions(
-    eligibility: Eligibility, best: Offer | None, catalog: Catalog
+    eligibility: Eligibility,
+    best: Offer | None,
+    catalog: Catalog,
+    plan_keys: list[str] | None = None,
 ) -> list[str]:
-    """Impedimentos pendentes primeiro (com o texto da pergunta), depois o que confirmar."""
+    """Impedimentos pendentes primeiro, depois o que ainda pode mudar o plano, depois o que
+    confirmar nas faixas."""
     questions = []
     for p in eligibility.pending:
         text = catalog.questions.get(p.fact_key)
         questions.append(text.texto if text else f"{p.why}?")
+    for key in plan_keys or []:
+        text = catalog.questions.get(key)
+        questions.append(text.texto if text else f"Confirmar: {get_fact_key(key).label.lower()}?")
     if best:
         questions += sorted({q for c in best.coverages for q in c.to_confirm})
     return list(dict.fromkeys(questions))
