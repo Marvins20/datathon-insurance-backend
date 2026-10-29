@@ -33,3 +33,14 @@ def test_health() -> None:
     from app.main import create_app
 
     assert TestClient(create_app()).get("/health").json() == {"status": "ok"}
+
+
+def test_psycopg_conninfo_encodes_password() -> None:
+    from psycopg.conninfo import conninfo_to_dict
+
+    from app.main import psycopg_conninfo
+
+    url = "postgresql+psycopg://user:p%25ss@host:5432/db"  # senha "p%ss" já codificada
+    assert conninfo_to_dict(psycopg_conninfo(url))["password"] == "p%ss"
+    raw = "postgresql://user:a£b%c@host:5432/db"  # senha crua com caracteres especiais
+    assert conninfo_to_dict(psycopg_conninfo(raw))["password"] == "a£b%c"

@@ -4,6 +4,7 @@ Postgres é validada à parte em modo offline."""
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.models import Base
@@ -21,6 +22,10 @@ NOW = datetime(2026, 10, 28, tzinfo=UTC)
 @pytest.fixture
 async def session():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # Como no Postgres: chaves estrangeiras valem (o SQLite não as aplica por padrão).
+    event.listen(
+        engine.sync_engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON")
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with async_sessionmaker(engine, expire_on_commit=False)() as s:
@@ -47,6 +52,8 @@ async def test_case_facts_events_and_recommendation(session) -> None:
     await case_repo.save_recommendation(session, rec, "recomendado")
     await case_repo.append_event(session, "c1", "review_requested", {"reason": "x"}, "usuario", NOW)
     await session.commit()
+    restored = await case_repo.latest_recommendation(session, "c1")
+    assert restored == rec
     assert [e.type for e in await case_repo.list_events(session, "c1")] == [
         "case.created",
         "review_requested",

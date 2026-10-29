@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 
 from app.agents.profiling.checkpoint import serializer
 from app.agents.profiling.graph import build_graph
@@ -15,6 +15,13 @@ from app.api.sse import EventBus
 from app.config import get_settings
 from app.engine.catalog import default_catalog
 from app.graph.store import load_snapshot
+
+
+def psycopg_conninfo(database_url: str) -> str:
+    """URL do SQLAlchemy → conninfo do psycopg, com a senha codificada (senhas com %, £ etc.
+    passam no SQLAlchemy mas quebram o parser do psycopg)."""
+    url = make_url(database_url).set(drivername="postgresql")
+    return url.render_as_string(hide_password=False)
 
 
 @asynccontextmanager
@@ -30,7 +37,7 @@ async def lifespan(app: FastAPI):
     from app.db.repositories import graph as graph_repo
     from app.db.session import get_sessionmaker
 
-    conninfo = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+    conninfo = psycopg_conninfo(settings.database_url)
     async with AsyncPostgresSaver.from_conn_string(conninfo, serde=serializer()) as saver:
         await saver.setup()
         sessions = get_sessionmaker()
@@ -66,7 +73,11 @@ def create_app() -> FastAPI:
         d["fact_key"] for _, d in state.graph.graph.nodes(data=True) if d.get("fact_key")
     }
     state.offers = offers.OfferRepository()
-    state.cases = cases.CaseStore()
+    state.cases = cases.CaseStore(
+        on_restore=lambda case_id, token_hash, rec, facts: state.offers.save_hashed(
+            case_id, token_hash, rec.offers, facts
+        )
+    )
     state.bus = EventBus()
     state.sessions = None
     state.learning = {}  # case_id → {característica: LearningEvent} (só confirmados)

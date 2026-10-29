@@ -22,6 +22,7 @@ async def create_case(
             created_at=now,
         )
     )
+    await session.flush()  # o caso precisa existir antes do evento (FK de case_events)
     await append_event(session, case_id, "case.created", {"channel": channel}, "sistema", now)
 
 
@@ -82,7 +83,8 @@ async def save_recommendation(session: AsyncSession, rec: Recommendation, status
             status=rec.status,
             eligibility=rec.eligibility.model_dump(mode="json"),
             offers=[o.model_dump(mode="json") for o in rec.offers],
-            trace={"confirmation_questions": rec.confirmation_questions},
+            # Recomendação completa no trace: permite restaurar o caso depois de um restart.
+            trace={"recommendation": rec.model_dump(mode="json")},
             rules_version=rec.versions.rules,
             kg_version=rec.versions.kg,
             created_at=rec.created_at,
@@ -95,6 +97,18 @@ async def save_recommendation(session: AsyncSession, rec: Recommendation, status
             rec.versions.rules,
             rec.versions.kg,
         )
+
+
+async def latest_recommendation(session: AsyncSession, case_id: str) -> Recommendation | None:
+    row = await session.scalar(
+        select(RecommendationRow)
+        .where(RecommendationRow.case_id == case_id)
+        .order_by(RecommendationRow.created_at.desc())
+        .limit(1)
+    )
+    if row is None or "recommendation" not in row.trace:
+        return None
+    return Recommendation.model_validate(row.trace["recommendation"])
 
 
 async def record_learning(

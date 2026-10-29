@@ -62,9 +62,12 @@ class CaseStore:
     cadastro, fatos, auditoria, recomendações e learning_events. O token nunca é guardado, só
     o hash."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_restore=None) -> None:
+        """`on_restore(case_id, token_hash, recommendation, facts)`: chamado quando um caso volta
+        do banco (ex.: depois de um restart), para repovoar as ofertas de Personalizar."""
         self._cases: dict[str, CaseRecord] = {}
         self._sessions = None
+        self._on_restore = on_restore
 
     def attach(self, sessionmaker) -> None:
         self._sessions = sessionmaker
@@ -83,12 +86,21 @@ class CaseStore:
     async def get(self, case_id: str, token: str | None) -> CaseRecord:
         case = self._cases.get(case_id)
         if case is None and self._sessions:  # caso de antes de um restart
-            async with self._sessions() as session:
-                token_hash = await case_repo.get_token_hash(session, case_id)
-            if token_hash:
-                case = self._cases.setdefault(case_id, CaseRecord(token_hash, datetime.now(UTC)))
+            case = await self._restore(case_id)
         if case is None or not hmac.compare_digest(case.token_hash, _hash(token or "")):
             raise _error(404, "case_not_found", "Caso não encontrado.")
+        return case
+
+    async def _restore(self, case_id: str) -> CaseRecord | None:
+        async with self._sessions() as session:
+            token_hash = await case_repo.get_token_hash(session, case_id)
+            if not token_hash:
+                return None
+            rec = await case_repo.latest_recommendation(session, case_id)
+            facts = await case_repo.load_facts(session, case_id) if rec else {}
+        case = self._cases.setdefault(case_id, CaseRecord(token_hash, datetime.now(UTC), rec))
+        if rec and self._on_restore:
+            self._on_restore(case_id, token_hash, rec, facts)
         return case
 
     def record(self, case_id: str) -> CaseRecord:
