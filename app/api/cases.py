@@ -258,19 +258,29 @@ async def create_case(
 
 @router.get("/{case_id}", response_model=CaseSnapshot)
 async def get_case(
-    case_id: str, store: Store, runner: Runner, catalog: CatalogDep, x_case_token: CaseToken = None
+    case_id: str,
+    store: Store,
+    runner: Runner,
+    catalog: CatalogDep,
+    bus: Bus,
+    x_case_token: CaseToken = None,
 ) -> CaseSnapshot:
     case = await store.get(case_id, x_case_token)
     state = await runner.state(case_id)
     decision: Decision | None = state.get("decision")
     question = state.get("question")
-    messages = [
-        ChatMessage(
-            message_id=f"m{i}", role="user" if m.type == "human" else "assistant", text=m.content
-        )
-        for i, m in enumerate(state.get("messages", []))
-        if m.type in ("human", "ai")
-    ]
+    # Assistant messages reuse the ids already sent as `message.completed`, so the SSE replay
+    # after the snapshot is deduplicated by the front instead of showing each message twice.
+    published = iter(
+        [e.data["message_id"] for e in bus.history(case_id) if e.event == "message.completed"]
+    )
+    messages = []
+    for i, m in enumerate(state.get("messages", [])):
+        if m.type == "human":
+            messages.append(ChatMessage(message_id=f"m{i}", role="user", text=m.content))
+        elif m.type == "ai":
+            message_id = next(published, f"m{i}")
+            messages.append(ChatMessage(message_id=message_id, role="assistant", text=m.content))
     if decision is not None and decision.eligibility.status == "inelegivel":
         case_status, avatar = "inelegivel", "preocupado"
     elif case.recommendation is not None and question is None:
