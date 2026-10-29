@@ -137,13 +137,16 @@ Premissas da equipe no motor:
 - **`PLN-ESP`**: se uma cobertura específica da atividade se aplica, o plano sobe para o Prático.
 - **Hipóteses**: p ≥ 0,8 vira hipótese (mesmo limiar do estilo "confirmação" das perguntas).
 - **Faixas `EST-*`** (`catalog/estimativas.yaml`): 7 regras do contrato e 10 da equipe; sem entrada,
-  tabela da equipe com natureza `estimado`. Confiança = Σ fator das entradas presentes
-  (confirmado 1,0 · observado 0,8 · derivado 0,7 · estimado 0,4) ÷ nº de entradas da regra.
+  tabela da equipe com natureza `estimado`. Confiança = média dos fatores das **vagas de entrada**
+  (confirmado 1,0 · observado 0,8 · derivado 0,7 · estimado 0,4; vaga vazia 0). Alternativas
+  ("prédio ou conteúdo") ocupam uma vaga só e entradas que não se aplicam ao caso (o prédio de quem
+  só protege o conteúdo) não contam nem viram pergunta.
 - **IS básica para ELG-008**: soma dos **pisos** das faixas sabidas — só redireciona quando nem o
   mínimo cabe em R$ 7,5 mi.
 - **Inquilino sem objeto do seguro** protege só o conteúdo; proprietário, prédio e conteúdo.
-- **Confiança geral**: média da confiança das coberturas da recomendação × 0,8 quando há
-  impedimento pendente.
+- **Confiança geral**: média da confiança das coberturas da recomendação — mede o quanto a oferta
+  é sustentada pelos dados. A pendência de elegibilidade não entra no número: já aparece no status
+  (`preliminar`, `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas de confirmação.
 
 Mapeamento da base (`app/batch/input_mapping.yaml`): campos cadastrais → `observado`; valores
 recalculáveis (estoque, despesa, bens ponderados) → `derivado`; probabilidades e índices →
@@ -200,8 +203,8 @@ Detalhes, tabelas e limitações em `docs/DADOS_EXTERNOS.md` (repositório de co
 | Casos elegíveis com as 6 fixas no template | 100% |
 | Inconsistências plano × coberturas | 0 |
 | Coberturas sem faixa | 0% |
-| Perguntas de confirmação por caso (média) | 7,8 |
-| Casos com confiança geral < 0,5 | 59,0% |
+| Perguntas de confirmação por caso (média) | 7,0 |
+| Confiança geral média / casos < 0,5 | 0,66 / 0% (100% na faixa média) |
 | Estabilidade (perturbar atributo irrelevante) | 100% |
 | Consistência entre casos semelhantes | 64,6% |
 | Sensibilidade da básica (conteúdo sobe uma faixa) | +265% no ponto médio |
@@ -215,6 +218,9 @@ grafo treinado (kg_version 2).
 
 - Três impedimentos (localização restrita, imóvel tombado, objeto já segurado na BB) não existem na
   base: todo caso sem impedimento conhecido sai como elegível sujeito a confirmação.
+- Nenhum caso do lote chega a confiança "alta" (≥ 0,75): a base traz dados observados (0,8) e
+  derivados (0,7), nunca confirmados. A confiança sobe na jornada web, à medida que o cliente
+  confirma os cards.
 - Faixas monetárias de entrada são largas (ex.: R$ 200 mil a 1 milhão); por isso as faixas de saída
   também são, e a sensibilidade a uma mudança de faixa é alta.
 - Valores das regras `EST-*` da equipe e os limiares do mapeamento são pontos de partida a calibrar.

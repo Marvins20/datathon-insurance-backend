@@ -92,7 +92,7 @@ def decide(facts: dict[str, Fact], catalog: Catalog, graph: GraphSnapshot) -> De
         hypotheses=hyps,
         needs=needs,
         offers=offers,
-        confidence=overall_confidence(best, eligibility),
+        confidence=overall_confidence(best),
         confirmation_questions=confirmation_questions(eligibility, best, catalog),
         external_sources=external_sources(facts),
         versions=versions,

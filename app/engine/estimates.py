@@ -1,8 +1,13 @@
 """Faixas de importância segurada pelas regras EST-* (catalog/estimativas.yaml).
 
 Entradas por prioridade: confirmado > observado > derivado > estimado; sem entrada, a tabela da
-equipe (`padrao`, natureza estimado). Confiança = Σ fator(natureza das entradas presentes,
-tabela da equipe = estimado) ÷ nº de entradas da regra (CONTRATOS_API §9.5).
+equipe (`padrao`, natureza estimado).
+
+Confiança = média dos fatores das *vagas* de entrada da regra (CONTRATOS_API §9.5: média
+ponderada do fator × cobertura das entradas necessárias). Uma vaga é uma entrada necessária ao
+caso: alternativas ("prédio **ou** conteúdo") ocupam uma vaga só, e entradas que não se aplicam
+(o prédio de quem só protege o conteúdo) não contam. Vaga vazia vale 0; vaga preenchida pela
+tabela da equipe vale o fator de `estimado`.
 """
 
 from dataclasses import dataclass
@@ -25,6 +30,15 @@ class Input:
 
 
 @dataclass(frozen=True)
+class Slot:
+    """Vaga de entrada: chave a confirmar, fator de natureza (0 = vazia) e se pede confirmação."""
+
+    key: str
+    factor: float
+    confirm: bool
+
+
+@dataclass(frozen=True)
 class Estimate:
     amount: InsuredAmount
     confidence: float
@@ -43,60 +57,84 @@ def build_inputs(
     return inputs
 
 
-def _basic(rule: EstimateRule, inputs: dict[str, Input], money, strict: bool):
-    """Soma das faixas de prédio e/ou conteúdo. strict: sem tabela da equipe (None se faltar)."""
-    used, extra_confirm, defaulted = [], [], False
+def _basic(rule: EstimateRule, inputs: dict[str, Input], money, factors, strict: bool):
+    """Soma das faixas de prédio e/ou conteúdo. strict: sem tabela da equipe (None se faltar).
+    Vagas: o objeto do seguro e cada parte que será protegida (só as que se aplicam)."""
+    used, defaulted = [], False
     if "objeto_seguro" in inputs:
-        parts = BASIC_PARTS[inputs["objeto_seguro"].value]
+        item = inputs["objeto_seguro"]
+        parts = BASIC_PARTS[item.value]
+        slots = [Slot("objeto_seguro", factors[item.status], item.status == "estimado")]
     elif "relacao_imovel" in inputs:
         # Premissa: inquilino protege só o conteúdo; proprietário, prédio e conteúdo.
-        inquilino = inputs["relacao_imovel"].value == "inquilino"
-        parts = ["conteudo"] if inquilino else ["predio", "conteudo"]
+        item = inputs["relacao_imovel"]
+        parts = ["conteudo"] if item.value == "inquilino" else ["predio", "conteudo"]
         used.append("relacao_imovel")
-        extra_confirm.append("objeto_seguro")
+        slots = [Slot("objeto_seguro", factors[item.status], True)]  # inferido: confirmar
     elif strict:
         return None
     else:
         parts = ["predio", "conteudo"]
-        extra_confirm.append("objeto_seguro")
+        slots = [Slot("objeto_seguro", 0.0, True)]
 
     lo = hi = 0
     for part in parts:
         key = f"valor_{part}_faixa"
         if key in inputs:
             rng = money[inputs[key].value]
+            slots.append(Slot(key, factors[inputs[key].status], inputs[key].status == "estimado"))
         elif strict:
             return None
         else:
             rng = money[rule.padrao[key]]
             defaulted = True
+            slots.append(Slot(key, factors["estimado"], True))
         lo, hi = lo + rng[0], hi + rng[1]
-    return lo, hi, used, defaulted, extra_confirm
+    return lo, hi, used, defaulted, slots
 
 
-def _compute(rule: EstimateRule, inputs: dict[str, Input], money):
-    """Devolve (min, max, entradas extras usadas, usou tabela da equipe?, a confirmar extras)."""
-    match rule.tipo:
-        case "basica":
-            return _basic(rule, inputs, money, strict=False)
-        case "proporcional":
-            m_lo, m_hi = rule.multiplicador
-            for base in rule.base:
-                if base.fato in inputs:
-                    rng = money[inputs[base.fato].value]
-                    return rng[0] * base.fator * m_lo, rng[1] * base.fator * m_hi, [], False, []
-        case "tabela":
-            item = inputs.get(rule.fato)
-            if item is not None and item.value in rule.linhas:
-                lo, hi = rule.linhas[item.value]
-                return lo, hi, [], False, []
-        case "contagem":
-            present = [k for k in rule.fatos if k in inputs]
-            if present:
-                lo, hi = rule.linhas[sum(inputs[k].value is True for k in present)]
-                return lo, hi, [], False, []
+def _slot(key: str, inputs: dict[str, Input], factors) -> Slot:
+    item = inputs.get(key)
+    if item is None:
+        return Slot(key, 0.0, True)
+    return Slot(key, factors[item.status], item.status == "estimado")
+
+
+def _compute(rule: EstimateRule, inputs: dict[str, Input], money, factors):
+    """Devolve (min, max, entradas extras usadas, usou tabela da equipe?, vagas)."""
+    table = factors["estimado"]
+    if rule.tipo == "basica":
+        return _basic(rule, inputs, money, factors, strict=False)
+
+    if rule.tipo == "proporcional":
+        # As bases são alternativas: uma vaga só, a da primeira disponível.
+        alternatives = {b.fato for b in rule.base}
+        others = [_slot(k, inputs, factors) for k in rule.entradas if k not in alternatives]
+        m_lo, m_hi = rule.multiplicador
+        for base in rule.base:
+            if base.fato in inputs:
+                rng = money[inputs[base.fato].value]
+                slots = [_slot(base.fato, inputs, factors), *others]
+                return rng[0] * base.fator * m_lo, rng[1] * base.fator * m_hi, [], False, slots
+        lo, hi = rule.padrao
+        return lo, hi, [], True, [Slot(rule.base[0].fato, table, True), *others]
+
+    if rule.tipo == "tabela":
+        others = [_slot(k, inputs, factors) for k in rule.entradas if k != rule.fato]
+        item = inputs.get(rule.fato)
+        if item is not None and item.value in rule.linhas:
+            lo, hi = rule.linhas[item.value]
+            return lo, hi, [], False, [_slot(rule.fato, inputs, factors), *others]
+        lo, hi = rule.padrao
+        return lo, hi, [], True, [Slot(rule.fato, table, True), *others]
+
+    # contagem: cada sinal é uma vaga; sem nenhum, a tabela da equipe preenche todas (estimado).
+    present = [k for k in rule.fatos if k in inputs]
+    if present:
+        lo, hi = rule.linhas[sum(inputs[k].value is True for k in present)]
+        return lo, hi, [], False, [_slot(k, inputs, factors) for k in rule.fatos]
     lo, hi = rule.padrao
-    return lo, hi, [], True, []
+    return lo, hi, [], True, [Slot(k, table, True) for k in rule.fatos]
 
 
 def estimate(code: str, inputs: dict[str, Input], catalog: Catalog) -> Estimate | None:
@@ -104,7 +142,9 @@ def estimate(code: str, inputs: dict[str, Input], catalog: Catalog) -> Estimate 
     rule = est.rules.get(code)
     if rule is None:
         return None
-    lo, hi, extra_used, defaulted, extra_confirm = _compute(rule, inputs, est.money_ranges)
+    lo, hi, extra_used, defaulted, slots = _compute(
+        rule, inputs, est.money_ranges, est.status_factors
+    )
 
     # Inteiros em reais: min arredondado para baixo, max para cima, dentro dos limites da cobertura.
     step = est.rounding
@@ -115,20 +155,15 @@ def estimate(code: str, inputs: dict[str, Input], catalog: Catalog) -> Estimate 
     if cov.is_max is not None:
         lo, hi = min(lo, cov.is_max), min(hi, cov.is_max)
 
-    present = [k for k in rule.entradas if k in inputs]
-    score = sum(est.status_factors[inputs[k].status] for k in present)
-    if defaulted:
-        score += est.status_factors["estimado"]
-    confidence = round(min(1.0, score / len(rule.entradas)), 2)
+    confidence = round(sum(s.factor for s in slots) / len(slots), 2)
 
-    used = sorted(set(present) | set(extra_used))
+    present = {s.key for s in slots if s.key in inputs}
+    used = sorted(present | set(extra_used))
     data_used = [f"{k} ({inputs[k].status}, {inputs[k].source})" for k in used]
     if defaulted:
         data_used.append(f"tabela da equipe {rule.id} (estimado)")
-    pending = {k for k in rule.entradas if k not in inputs or inputs[k].status == "estimado"}
-    to_confirm = [
-        f"Confirmar: {get_fact_key(k).label.lower()}?" for k in sorted(pending | set(extra_confirm))
-    ]
+    pending = {s.key for s in slots if s.confirm}
+    to_confirm = [f"Confirmar: {get_fact_key(k).label.lower()}?" for k in sorted(pending)]
 
     return Estimate(
         amount=InsuredAmount(min=lo, max=hi),
@@ -144,5 +179,5 @@ def basic_minimum(inputs: dict[str, Input], catalog: Catalog) -> int | None:
     sabidas e pelo piso: o caso só é redirecionado quando nem o mínimo cabe no limite."""
     est = catalog.estimates
     rule = next(r for r in est.rules.values() if r.tipo == "basica")
-    result = _basic(rule, inputs, est.money_ranges, strict=True)
+    result = _basic(rule, inputs, est.money_ranges, est.status_factors, strict=True)
     return None if result is None else result[0]

@@ -29,8 +29,6 @@ EXTERNAL_SOURCES = {
     "api_seguranca": "Dados públicos de segurança — nível UF",
     "receita_cnpj": "Cadastro público de CNPJ",
 }
-# Recomendação preliminar (impedimentos pendentes) pesa menos na confiança geral.
-PENDING_FACTOR = 0.8
 
 
 def brl(value: int) -> str:
@@ -91,12 +89,11 @@ def describe(offer: Offer, best: Offer) -> dict:
     }
 
 
-def overall_confidence(best: Offer, eligibility: Eligibility) -> Confidence:
+def overall_confidence(best: Offer) -> Confidence:
     values = [c.confidence for c in best.coverages if c.confidence is not None]
-    overall = sum(values) / len(values) if values else 0.0
-    if eligibility.status == "pendente":
-        overall *= PENDING_FACTOR
-    overall = round(overall, 2)
+    # Só a sustentação da oferta pelos dados. Pendência de elegibilidade não entra aqui: ela já
+    # aparece no status (`preliminar`, `SIM_SUJEITO_A_CONFIRMACAO`) e nas perguntas.
+    overall = round(sum(values) / len(values), 2) if values else 0.0
     level = "alta" if overall >= 0.75 else "media" if overall >= 0.5 else "baixa"
     return Confidence(overall=overall, level=level)
 

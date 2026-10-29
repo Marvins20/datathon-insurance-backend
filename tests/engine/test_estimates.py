@@ -132,3 +132,39 @@ def test_specific_coverage_range(catalog, graph, code) -> None:
     frig = coverage(d, code)
     assert (frig.insured_amount.min, frig.insured_amount.max) == (3_000, 30_000)
     assert frig.calc_rule == "EST-FRIG-01"
+
+
+# --- confiança por vagas de entrada ---------------------------------------------------------
+
+
+def test_alternative_inputs_fill_a_single_slot(catalog, graph) -> None:
+    # Vendaval usa prédio OU conteúdo: só o conteúdo (derivado 0,7) não pode valer metade.
+    # possui_estoque leva ao Prático (PLN-01), que inclui vendaval.
+    d = run(
+        catalog, graph, FactStatus.DERIVADO, valor_conteudo_faixa="50k_200k", possui_estoque=True
+    )
+    assert d.offers[0].plan_code == "PRATICO"
+    vendaval = coverage(d, "VENDAVAL_GRANIZO")
+    de = coverage(d, "DANOS_ELETRICOS")  # equipamentos OU conteúdo
+    assert vendaval.confidence == de.confidence == 0.7
+    assert "Confirmar: valor dos equipamentos?" not in de.to_confirm
+    assert "Confirmar: valor do prédio?" not in vendaval.to_confirm
+
+
+def test_tenant_basic_ignores_building_value(catalog, graph) -> None:
+    d = run(catalog, graph, relacao_imovel="inquilino", valor_conteudo_faixa="50k_200k")
+    basic = coverage(d, "INCENDIO_RAIO_EXPLOSAO_FUMACA")
+    assert basic.confidence == 0.8  # objeto (pela relação, observado) + conteúdo (observado)
+    assert "Confirmar: valor do prédio?" not in basic.to_confirm
+
+
+def test_pending_eligibility_does_not_lower_confidence(catalog, graph) -> None:
+    from app.engine.decide import decide
+    from tests.engine.conftest import make_facts
+
+    values = {"valor_conteudo_faixa": "50k_200k", "objeto_seguro": "conteudo"}
+    complete = decide(make_facts(**NO_IMPEDIMENTS, **values), catalog, graph)
+    partial = {k: v for k, v in NO_IMPEDIMENTS.items() if k != "imovel_em_obra"}
+    pending = decide(make_facts(**partial, **values), catalog, graph)
+    assert pending.eligibility.status == "pendente"
+    assert pending.confidence.overall == complete.confidence.overall
